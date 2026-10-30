@@ -120,6 +120,32 @@ export class Sfx {
     this.play([523.25, 659.25, 783.99].map((f, i) => ({ freq: f, dur: 0.3, type: 'sine' as const, gain: 0.22, delay: i * 0.06 })));
   }
 
+  /** Soft glassy marble click (ASMR-style). `semitone` raises the pitch for streaks. */
+  plink(semitone = 0): void {
+    const f = 1046.5 * 2 ** (semitone / 12);
+    this.play([
+      { freq: f, dur: 0.09, type: 'sine', gain: 0.12 },
+      { freq: f * 2.76, dur: 0.035, type: 'sine', gain: 0.03 },
+    ], 'plink', 28);
+  }
+
+  /** Round bubbly pop. */
+  bloop(): void {
+    this.play([
+      { freq: 170, to: 540, dur: 0.12, type: 'sine', gain: 0.3 },
+      { freq: 950, to: 1500, dur: 0.05, type: 'sine', gain: 0.05, delay: 0.03 },
+    ], 'bloop', 40);
+  }
+
+  /** Sparkly rising arpeggio for finishing a set. */
+  shimmer(): void {
+    const notes = [783.99, 987.77, 1174.66, 1567.98];
+    this.play([
+      ...notes.map((f, i) => ({ freq: f, dur: 0.5, type: 'sine' as const, gain: 0.12, delay: i * 0.05 })),
+      ...notes.map((f, i) => ({ freq: f * 2, dur: 0.25, type: 'sine' as const, gain: 0.025, delay: i * 0.05 + 0.01 })),
+    ]);
+  }
+
   win(): void {
     this.play([523.25, 659.25, 783.99, 1046.5].map((f, i) => ({ freq: f, dur: 0.45, type: 'triangle' as const, gain: 0.22, delay: i * 0.11 })));
   }

@@ -7,12 +7,16 @@ import { drawStars, roundRect, text } from '@shared/ui/draw';
 import { clearSpriteCache } from '@shared/ui/sprites';
 import type { App } from '../app';
 import { MAX_LEVEL, PALETTE, THEME } from '../game/constants';
+import { BoardFx } from '../game/fx';
 import { computeLayout, type Layout } from '../game/layout';
 import { getLevel, starsFor } from '../game/levels';
-import { drawBackground, drawBoard, drawLoopInfo } from '../game/render';
+import { beltFill, clearLayerCache, drawBackground, drawBoard, drawLoopInfo } from '../game/render';
 import { EV, S, hasWrong, intake, type LevelData } from '../sim';
 
 type Result = 'none' | 'win' | 'lose';
+
+/** Major pentatonic steps: landing streaks climb a scale that always sounds pleasant. */
+const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
 
 export class PlayScene implements Scene {
   private readonly level: LevelData;
@@ -21,6 +25,7 @@ export class PlayScene implements Scene {
   private winPanel = new ButtonSet();
   private losePanel = new ButtonSet();
   private fx = new Particles();
+  private board = new BoardFx();
   private result: Result = 'none';
   private resultT = 0;
   private stars = 0;
@@ -31,6 +36,7 @@ export class PlayScene implements Scene {
   constructor(private readonly app: App, private readonly levelNum: number) {
     this.level = getLevel(levelNum);
     app.sim.init(this.level);
+    this.board.reset(app.sim.s);
     const { icons } = app;
     this.hud.add(new Button({ icon: icons.back, style: 'ghost', onTap: () => this.click(() => app.goLevels()) }));
     this.hud.add(new Button({ icon: icons.restart, style: 'ghost', onTap: () => this.click(() => app.play(levelNum)) }));
@@ -60,6 +66,7 @@ export class PlayScene implements Scene {
     sim.setPath(L.path.x, L.path.y, L.path.w, L.path.h, L.path.r, L.trackW * 0.24);
     sim.computePositions();
     clearSpriteCache();
+    clearLayerCache();
     const { colX, colW, btn, hudY } = L;
     const m = colW * 0.05;
     this.hud.list[0].set(colX + m, hudY, btn, btn);
@@ -85,13 +92,17 @@ export class PlayScene implements Scene {
     for (let i = 0; i < n; i++) {
       const type = s.events[i * 2];
       const t = s.events[i * 2 + 1];
-      if (type === EV.ABSORB) sfx.tick(Math.min(s.combo[t], 14));
-      else if (type === EV.EJECT) sfx.pop();
-      else if (type === EV.DENY) sfx.deny();
-      else if (type === EV.COMPLETE) {
-        sfx.chime();
-        const tb = this.L.tubes[t];
-        this.fx.burst(tb.cx, tb.y + tb.h * 0.3, PALETTE[s.tubeShell[t]].hex, 18, tb.w * 5, tb.w * 0.07);
+      if (type === EV.ABSORB) this.board.onAbsorb(t);
+      else if (type === EV.LAND) {
+        const streak = this.board.onLand(t, s, this.L);
+        sfx.plink(SCALE[Math.min(streak - 1, SCALE.length - 1)]);
+      } else if (type === EV.EJECT) sfx.bloop();
+      else if (type === EV.DENY) {
+        sfx.deny();
+        this.board.onDeny(t);
+      } else if (type === EV.COMPLETE) {
+        sfx.shimmer();
+        this.board.onComplete(t, s, this.L);
       } else if (type === EV.WIN) this.onWin();
       else if (type === EV.LOSE) this.onLose();
     }
@@ -101,6 +112,8 @@ export class PlayScene implements Scene {
     this.winPanel.update(dt);
     this.losePanel.update(dt);
     this.fx.update(dt);
+    this.board.update(dt, s, beltFill(s));
+    this.board.ambient(dt, s, this.L);
   }
 
   private onWin(): void {
@@ -113,6 +126,7 @@ export class PlayScene implements Scene {
     this.best = prev === 0 || secs < prev;
     this.app.recordWin(this.levelNum, secs, this.stars);
     this.app.sfx.win();
+    this.board.onWin(s, this.L);
     this.fx.confetti(this.W / 2, this.H * 0.55, PALETTE.map((p) => p.hex), 90, this.H * 0.9);
   }
 
@@ -139,8 +153,8 @@ export class PlayScene implements Scene {
     const s = this.app.sim.s;
     drawBackground(ctx, W, H, this.app.stage.dpr);
     const hint = this.hint();
-    drawBoard(ctx, s, L, this.app.stage.dpr, hint?.tube ?? -1);
-    drawLoopInfo(ctx, s, this.levelNum, this.level.par, L, hint?.lines ?? null);
+    drawBoard(ctx, s, L, this.board, this.app.stage.dpr, hint?.tube ?? -1);
+    drawLoopInfo(ctx, s, this.levelNum, this.level.par, L, this.board, hint?.lines ?? null);
     this.hud.draw(ctx);
     if (this.result === 'win' && this.resultT > 0.5) this.drawWinPanel(ctx, Math.min(1, (this.resultT - 0.5) / 0.35));
     if (this.result === 'lose' && this.resultT > 0.4) this.drawLosePanel(ctx, Math.min(1, (this.resultT - 0.4) / 0.35));
@@ -206,7 +220,9 @@ export class PlayScene implements Scene {
     const gap = L.tubes.length > 1 ? (L.tubes[1].x - L.tubes[0].x - L.tubes[0].w) / 2 : 10;
     L.tubes.forEach((tb, i) => {
       if (pointInRect(x, y, tb.x - gap, L.loopBottom, tb.w + gap * 2, tb.y + tb.h + tb.capH + tb.w * 0.3 - L.loopBottom)) {
-        this.app.sim.tap(i);
+        const s = this.app.sim.s;
+        const before = { len: s.tubeLen[i], fall: s.fallLen[i], q: s.qLen[i] };
+        if (this.app.sim.tap(i)) this.board.onEject(i, before, s, L);
       }
     });
   }

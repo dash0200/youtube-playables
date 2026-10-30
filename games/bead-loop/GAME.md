@@ -63,13 +63,34 @@ games/bead-loop/src/
 │  ├─ levels.ts         typed access + starsFor
 │  ├─ constants.ts      palette (+ glyphs), theme
 │  ├─ layout.ts         responsive geometry (loop path, tubes, port fractions)
-│  └─ render.ts         canvas drawing; reads SimState only
+│  ├─ fx.ts             BoardFx: visual-only animation state (squash, wobble, flyers, rings, sparkles)
+│  └─ render.ts         canvas drawing; reads SimState + BoardFx only
 ├─ scenes/              menu, levels (select), play (HUD, win/lose panels, events → sfx)
 └─ tools/parity.mjs     Rust ↔ TS checksum comparison
 ```
 Per frame (PlayScene.update): `sim.update(dt)` → `sim.computePositions()` (belt
-bead x/y, done in wasm) → read `events` → sfx/particles → `clearEvents()`.
-Rendering only reads `sim.s`.
+bead x/y, done in wasm) → read `events` → sfx + `BoardFx` → `clearEvents()` →
+`board.update()`. Rendering only reads `sim.s` and `BoardFx`.
+
+### Juice / animation (`fx.ts`, visual only)
+`BoardFx` never touches rules, so no parity work is needed for visual changes.
+PlayScene feeds it sim events (ABSORB → port pulse, LAND → bead squash + tube
+wobble + landing streak, DENY → wobble, COMPLETE → shimmer/rings/sparkles, WIN)
+and taps (`onEject` with a pre-tap `TubeSnapshot`, so ejected beads fly from
+where they were into the pipe; `pending` hides their queue entries until they
+arrive). Pipe beads glide up via `qOff` when the sim pops the queue.
+Sound: landings play `sfx.plink` climbing a major pentatonic scale per streak,
+eject `bloop`, complete `shimmer`.
+
+### Render performance
+Budget is mobile. Everything gradient-heavy and static (tube glass front/back,
+caps, candy stacks, glows, pipes, the board panel + belt channel) is painted once
+into cached layers (`layer()` in render.ts) and blitted. Each tube's settled
+beads are cached per tube and repainted only when the stack changes; only
+animating beads are drawn live. The background is composed at ¼ resolution and
+upscaled in one blit. Cleared on resize via `clearLayerCache()`. Avoid per-frame
+`createLinearGradient`, `shadowBlur` and per-slot paths; keep a render of the
+heaviest level (60) to a few ms.
 
 ### Rust ↔ TypeScript contract
 - `types.ts` constants and `SimState` arrays mirror `sim.rs` field-for-field.
@@ -99,9 +120,18 @@ sent to YouTube = levels cleared (`unlocked - 1`), kept equal to the save.
 Add fields freely; renames need a version bump + `migrate`.
 
 ## Visual style
-Original look: dark purple, glossy beads with a shape glyph per colour (colour-blind
-friendly), glass tubes tinted with the shell colour plus a cap glyph. **Port rings and
-pipe outlines show each tube's current intake colour.** Inside the loop: level, timer,
+Calm, "satisfying" (ASMR-like) feel: deep purple twilight with slow drifting bokeh,
+candy-glass beads (soft contact shadow, light glowing through the far side, crisp
+specular) with a shape glyph per colour (colour-blind friendly), glass tubes tinted
+with the shell colour, and a
+moving conveyor tread. **Stacks:** a full cell of one colour (9 beads) is drawn as
+a candy block instead of a 3×3 grid, and consecutive same-colour blocks merge
+into one column (glyph once per block so the count stays readable). Mixed or
+partly filled cells still show loose beads. When a cell's 9th bead lands, the
+beads melt into the block. Motion is soft and springy: beads pop onto the belt, fall
+then tuck into place and squash on landing, tubes jiggle like jelly, completed
+tubes glow, shimmer and twinkle. **Port rings and pipe outlines show each tube's
+current intake colour.** Inside the loop: level, timer,
 loop-capacity meter (green → yellow → red), and a jam countdown. Don't copy art,
 names or branding from the reference game.
 

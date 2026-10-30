@@ -12,22 +12,26 @@ export interface BeadColor {
 
 /** Index in this array = colour id used everywhere in game logic. */
 export const PALETTE: readonly BeadColor[] = [
-  { name: 'Red', hex: '#ff4f62', glyph: 'circle' },
-  { name: 'Blue', hex: '#3d8bff', glyph: 'square' },
-  { name: 'Yellow', hex: '#ffc93a', glyph: 'triangle' },
-  { name: 'Green', hex: '#2fd27e', glyph: 'diamond' },
-  { name: 'Purple', hex: '#a46bff', glyph: 'star' },
-  { name: 'Orange', hex: '#ff8a3d', glyph: 'plus' },
+  { name: 'Red', hex: '#ff5c7c', glyph: 'circle' },
+  { name: 'Blue', hex: '#4aa8ff', glyph: 'square' },
+  { name: 'Yellow', hex: '#ffd84a', glyph: 'triangle' },
+  { name: 'Green', hex: '#3ee0a8', glyph: 'diamond' },
+  { name: 'Purple', hex: '#b88cff', glyph: 'star' },
+  { name: 'Orange', hex: '#ff9b4f', glyph: 'plus' },
 ];
 
 export const THEME = {
-  bgTop: '#2a1f4a',
-  bgBottom: '#0f0b1f',
-  panel: 'rgba(255,255,255,0.035)',
-  track: '#120e1f',
-  trackInner: '#2a2244',
-  stud: 'rgba(255,255,255,0.10)',
-  tubeInner: '#120d20',
+  bgTop: '#34206f',
+  bgBottom: '#120b2e',
+  /** Slow drifting light blobs behind everything. */
+  bokeh: ['#7c5cff', '#ff5fa2', '#3fb4ff', '#9b6bff'],
+  panel: 'rgba(255,255,255,0.045)',
+  panelEdge: 'rgba(255,255,255,0.07)',
+  track: '#0d0a1c',
+  trackInner: '#211a3d',
+  tread: 'rgba(255,255,255,0.035)',
+  stud: 'rgba(255,255,255,0.07)',
+  tubeInner: '#170f30',
   text: '#ffffff',
   textDim: 'rgba(255,255,255,0.6)',
   accent: '#7c5cff',

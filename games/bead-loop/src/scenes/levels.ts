@@ -76,7 +76,7 @@ export class LevelSelectScene implements Scene {
       const n = this.page * PER_PAGE + i + 1;
       if (n > MAX_LEVEL) break;
       const r = this.cellRect(i);
-      const locked = n > save.unlocked;
+      const locked = !app.isUnlocked(n);
       const current = n === save.unlocked;
       roundRect(ctx, r.x, r.y, r.w, r.h, r.w * 0.2);
       ctx.fillStyle = locked ? 'rgba(255,255,255,0.05)' : current ? THEME.accent : 'rgba(255,255,255,0.12)';
@@ -108,7 +108,7 @@ export class LevelSelectScene implements Scene {
       if (n > MAX_LEVEL) break;
       const r = this.cellRect(i);
       if (pointInRect(x, y, r.x, r.y, r.w, r.h)) {
-        if (n <= this.app.save.data.unlocked) {
+        if (this.app.isUnlocked(n)) {
           this.app.sfx.click();
           this.app.play(n);
         } else this.app.sfx.deny();

@@ -22,6 +22,8 @@ export interface App extends Core {
   goMenu(): void;
   goLevels(): void;
   play(level: number): void;
+  /** True if the player may start this level (also true for all levels in dev unlock mode). */
+  isUnlocked(level: number): boolean;
   /** Records a cleared level, saves, and syncs the YouTube score. */
   recordWin(level: number, seconds: number, stars: number): void;
 }

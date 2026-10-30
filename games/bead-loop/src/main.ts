@@ -14,6 +14,17 @@ import { PlayScene } from './scenes/play';
 const save = new SaveStore<SaveData>(defaultSave, 1);
 let app: App;
 
+// Dev only (stripped from builds): open with ?unlock or press U to unlock every
+// level. Not saved and sends no score, so real progress is untouched.
+let devUnlockAll = import.meta.env.DEV && new URLSearchParams(location.search).has('unlock');
+if (import.meta.env.DEV) {
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'u' && e.key !== 'U') return;
+    devUnlockAll = !devUnlockAll;
+    console.info(`[bead-loop:dev] unlock all levels ${devUnlockAll ? 'on' : 'off'}`);
+  });
+}
+
 void bootPlayable({
   drawSplash(ctx, w, h, t) {
     drawBackground(ctx, w, h, window.devicePixelRatio || 1);
@@ -57,6 +68,7 @@ function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[
     goMenu: () => core.scenes.go(new MenuScene(a)),
     goLevels: () => core.scenes.go(new LevelSelectScene(a)),
     play: (n) => core.scenes.go(new PlayScene(a, Math.max(1, Math.min(MAX_LEVEL, n)))),
+    isUnlocked: (n) => devUnlockAll || n <= save.data.unlocked,
     recordWin(level, seconds, stars) {
       const d = save.data;
       const i = level - 1;

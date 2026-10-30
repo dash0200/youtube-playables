@@ -30,6 +30,8 @@ export interface LevelData {
   tubes: string[];
   /** Belt slots: '.' empty or a colour digit. */
   belt: string;
+  /** Easier layout of the same board, served after repeated losses (same par). */
+  easy?: { slots: number; tubes: string[]; belt: string };
 }
 
 /** Struct-of-arrays state; for wasm these are views into wasm memory. */

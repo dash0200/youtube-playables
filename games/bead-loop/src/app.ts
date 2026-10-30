@@ -12,9 +12,11 @@ export interface SaveData {
   times: number[];
   /** Last score sent to YouTube (= levels cleared). */
   scoreSent: number;
+  /** Losses in a row per level, index = level - 1 (reset on a win). */
+  losses: number[];
 }
 
-export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0 });
+export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0, losses: [] });
 
 /** Services shared by all scenes. Implemented in main.ts. */
 export interface App extends Core {
@@ -24,9 +26,14 @@ export interface App extends Core {
   sim: Sim;
   goMenu(): void;
   goLevels(): void;
-  play(level: number): void;
+  /** Starts a level; `hint` switches the guided hint on from the start (already earned). */
+  play(level: number, opts?: { hint?: boolean }): void;
   /** True if the player may start this level (also true for all levels in dev unlock mode). */
   isUnlocked(level: number): boolean;
+  /** True once the player has lost this level often enough to get the easier layout. */
+  needsEasy(level: number): boolean;
+  /** Records a lost level (counts towards the easier layout) and saves. */
+  recordLoss(level: number): void;
   /** Records a cleared level, saves, and syncs the YouTube score. */
   recordWin(level: number, seconds: number, stars: number): void;
 }

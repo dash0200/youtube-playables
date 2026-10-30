@@ -9,7 +9,7 @@
     "out": "src/wasm/bead_loop.wasm"
   },
   "scripts": {
-    "levels": "cargo run --release --manifest-path rust/Cargo.toml -p bead-loop-tools --bin gen-levels -- games/bead-loop/src/game/levels.json 60",
+    "levels": "cargo run --release --manifest-path rust/Cargo.toml -p bead-loop-tools --bin gen-levels -- games/bead-loop/src/game/levels.json 150",
     "parity": "node games/bead-loop/tools/parity.mjs"
   }
 }

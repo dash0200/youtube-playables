@@ -23,6 +23,17 @@ pub struct LevelJson {
     pub tubes: Vec<String>,
     /// Belt slots: '.' = empty, digit = colour.
     pub belt: String,
+    /// Easier layout of the same board, served after repeated losses
+    /// (same colours, cap, speed and par; roomier loop / kinder layout).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub easy: Option<EasyJson>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EasyJson {
+    pub slots: usize,
+    pub tubes: Vec<String>,
+    pub belt: String,
 }
 
 pub struct Params {
@@ -44,34 +55,44 @@ pub fn slots_for(p: &Params, ratio: f64) -> usize {
     ((total as f64 * ratio).round() as usize).max(belt_start + 2 * K).min(MAX_SLOTS)
 }
 
-/// Board size curve. Edit here (and `target`), then `npm run levels -- bead-loop`.
+/// Board size curve over a long, gentle progression (150 levels). Edit here
+/// (and `target`), then `npm run levels -- bead-loop`.
 pub fn params(n: u32) -> Params {
     let n = n as usize;
     // 3-4 colours are onboarding: even unplanned play clears them at any loop
-    // size, so the real challenge (tight loops) starts once 5-6 colours are in.
-    let colors = if n <= 2 { 3 } else if n <= 6 { 4 } else if n <= 12 { 5 } else { 6 };
-    let cap = if n <= 2 { 4 } else { (5 + (n - 3) / 6).min(7) };
-    let free = if n <= 2 { 2 } else if n <= 12 { 1 } else { 0 };
-    let speed = (22.0 + n as f64 * 0.2).min(32.0);
+    // size, so the real challenge (tight loops) only comes with 5-6 colours.
+    let colors = if n <= 2 { 3 } else if n <= 8 { 4 } else if n <= 25 { 5 } else { 6 };
+    let cap = if n <= 2 { 4 } else if n <= 20 { 5 } else if n <= 60 { 6 } else { 7 };
+    let free = if n <= 2 { 2 } else if n <= 25 { 1 } else { 0 };
+    let speed = (22.0 + n as f64 * 0.08).min(32.0);
     Params { colors, cap, free, speed }
 }
 
-/// Target win rate (0..1) of the naive player: easy to learn, then a steady
-/// climb with a small sawtooth (every 5th level is a spike, the next one a
-/// breather) so the pace has rhythm instead of a flat wall.
+/// Target win rate (0..1) of the naive player. Casual players quit after
+/// repeated failure, so most levels stay comfortable and difficulty arrives
+/// slowly: ~95% while learning, 90 -> 70% by level 50, 70 -> 50% by 100,
+/// 50 -> 30% by 150. Every 5th level is a small spike and the next a breather;
+/// the spikes grow with the level so early play never hits a wall.
 pub fn target(n: u32) -> f64 {
     let x = n as f64;
-    let base = if n <= 6 {
+    let base = if n <= 10 {
         0.95
-    } else if n <= 15 {
-        0.85 - (x - 7.0) * (0.2 / 8.0) // 0.85 → 0.65
-    } else if n <= 35 {
-        0.65 - (x - 15.0) * (0.25 / 20.0) // 0.65 → 0.40
+    } else if n <= 50 {
+        0.9 - (x - 10.0) * (0.2 / 40.0)
+    } else if n <= 100 {
+        0.7 - (x - 50.0) * (0.2 / 50.0)
     } else {
-        (0.4 - (x - 35.0) * (0.15 / 25.0)).max(0.25) // 0.40 → 0.25
+        (0.5 - (x - 100.0) * (0.2 / 50.0)).max(0.3)
     };
-    let saw = if n > 6 && n % 5 == 0 { -0.12 } else if n > 6 && n % 5 == 1 { 0.08 } else { 0.0 };
-    (base + saw).clamp(0.12, 0.97)
+    let (spike, rest) = if n <= 50 { (0.06, 0.04) } else if n <= 100 { (0.1, 0.06) } else { (0.12, 0.08) };
+    let saw = if n > 10 && n % 5 == 0 { -spike } else if n > 10 && n % 5 == 1 { rest } else { 0.0 };
+    (base + saw).clamp(0.15, 0.97)
+}
+
+/// Target for the easier variant served after repeated losses: clearly kinder,
+/// so a stuck player gets through and keeps going.
+pub fn easy_target(n: u32) -> f64 {
+    (target(n) + 0.25).clamp(0.6, 0.97)
 }
 
 /// How far the measured naive win rate may stray from the target.
@@ -215,13 +236,13 @@ pub struct Generated {
 pub const MAX_BOT_SECS: f64 = 75.0;
 
 /// Tries candidates in seed order and returns the first solvable one inside the
-/// target band, or the closest solvable one after 600 attempts. A candidate
-/// that looks on target is re-measured with fresh seeds before it's accepted,
-/// so a lucky first measurement can't sneak an easy level through.
-pub fn generate(n: u32) -> Generated {
-    let goal = target(n);
+/// band around `goal`, or the closest solvable one after 600 attempts. A
+/// candidate that looks on target is re-measured with fresh seeds before it's
+/// accepted, so a lucky first measurement can't sneak an easy level through.
+/// `first_attempt` separates seed ranges (the easy variant uses its own).
+pub fn generate_for(n: u32, goal: f64, first_attempt: u32) -> Generated {
     let mut best: Option<(f64, Generated)> = None;
-    for attempt in 0..600 {
+    for attempt in first_attempt..first_attempt + 600 {
         let Some(l) = build(n, attempt) else { continue };
         let Some(secs) = robust(&l) else { continue };
         if secs > MAX_BOT_SECS {
@@ -242,8 +263,17 @@ pub fn generate(n: u32) -> Generated {
     best.unwrap_or_else(|| panic!("level {n}: no solvable layout found")).1
 }
 
+/// The level itself.
+pub fn generate(n: u32) -> Generated {
+    generate_for(n, target(n), 0)
+}
+
+/// Its easier variant (own seed range, kinder target).
+pub fn generate_easy(n: u32) -> Generated {
+    generate_for(n, easy_target(n), 100_000)
+}
+
 pub fn to_json(n: u32, l: &Level, bot_secs: f64) -> LevelJson {
-    let digit = |c: u8| if c == EMPTY { '.' } else { (b'0' + c) as char };
     LevelJson {
         n,
         colors: l.colors,
@@ -251,9 +281,37 @@ pub fn to_json(n: u32, l: &Level, bot_secs: f64) -> LevelJson {
         slots: l.slots,
         speed: l.speed,
         par: (bot_secs * 1.15 + 5.0).round() as u32,
-        tubes: (0..l.colors).map(|t| l.tubes[t][..l.fill[t] as usize].iter().map(|&c| digit(c)).collect()).collect(),
-        belt: l.belt[..l.slots].iter().map(|&c| digit(c)).collect(),
+        tubes: tube_strings(l),
+        belt: belt_string(l),
+        easy: None,
     }
+}
+
+fn digit(c: u8) -> char {
+    if c == EMPTY { '.' } else { (b'0' + c) as char }
+}
+
+fn tube_strings(l: &Level) -> Vec<String> {
+    (0..l.colors).map(|t| l.tubes[t][..l.fill[t] as usize].iter().map(|&c| digit(c)).collect()).collect()
+}
+
+fn belt_string(l: &Level) -> String {
+    l.belt[..l.slots].iter().map(|&c| digit(c)).collect()
+}
+
+pub fn to_easy_json(l: &Level) -> EasyJson {
+    EasyJson { slots: l.slots, tubes: tube_strings(l), belt: belt_string(l) }
+}
+
+/// The easier variant as a full Level (same board settings as the main level).
+pub fn easy_from_json(j: &LevelJson) -> Option<Level> {
+    let e = j.easy.as_ref()?;
+    let mut v = j.clone();
+    v.slots = e.slots;
+    v.tubes = e.tubes.clone();
+    v.belt = e.belt.clone();
+    v.easy = None;
+    Some(from_json(&v))
 }
 
 pub fn from_json(j: &LevelJson) -> Level {

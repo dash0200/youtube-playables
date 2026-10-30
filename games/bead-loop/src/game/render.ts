@@ -3,9 +3,10 @@ import { clamp, lerp } from '@shared/engine/math';
 import { rgba, shade } from '@shared/ui/color';
 import { roundRect, text } from '@shared/ui/draw';
 import { drawGlyph, type GlyphKind } from '@shared/ui/glyphs';
-import { drawBead } from '@shared/ui/sprites';
+import { beadSprite } from '@shared/ui/sprites';
 import { FALL_TIME, JAM_TIME, K, MAX_BEADS, S, EMPTY, beadAt, isOpen, queueAt, type SimState } from '../sim/types';
 import { PALETTE, THEME } from './constants';
+import type { Advice } from './advisor';
 import type { BoardFx } from './fx';
 import { beadPos, cellTop, type Layout, type TubeBox } from './layout';
 
@@ -46,6 +47,61 @@ function blit(ctx: CanvasRenderingContext2D, l: Layer, x: number, y: number): vo
 export function clearLayerCache(): void {
   layers.clear();
   contentCache.length = 0;
+  clumps.clear();
+}
+
+// ---------------------------------------------------------------- bead clumps
+
+/**
+ * Every bead the simulation tracks is drawn as a clump of tiny grains, so the
+ * belt and tubes read as a pour of many small beads. Each clump is baked once
+ * per (colour, size, variant) into a sprite, so it costs one drawImage like a
+ * single bead did. Grains are too small for glyphs; blocks and caps keep them.
+ */
+const GRAIN_ANGLES = [0.3, 1.6, 2.9, 4.4];
+const clumps = new Map<string, HTMLCanvasElement>();
+
+function clumpSprite(hex: string, r: number, dpr: number, variant: number): HTMLCanvasElement {
+  const key = `${hex}|${Math.round(r * dpr * 4)}|${dpr}|${variant}`;
+  let c = clumps.get(key);
+  if (c) return c;
+  if (clumps.size > 600) clumps.clear();
+  const size = Math.ceil(r * 2.9 * dpr) + 4;
+  c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d')!;
+  const gr = r * 0.46;
+  const spr = beadSprite(hex, gr, dpr);
+  const rot = variant * 0.71;
+  const grains: { x: number; y: number }[] = [{ x: 0.06 * r, y: -0.04 * r }];
+  for (const a of GRAIN_ANGLES) {
+    const d = r * (0.5 + 0.08 * Math.sin(a * 3 + variant));
+    grains.push({ x: Math.cos(a + rot) * d, y: Math.sin(a + rot) * d });
+  }
+  grains.sort((a, b) => a.y - b.y); // lower grains drawn last sit in front
+  const m = size / 2;
+  for (const p of grains) g.drawImage(spr, Math.round(m + p.x * dpr - spr.width / 2), Math.round(m + p.y * dpr - spr.height / 2));
+  clumps.set(key, c);
+  return c;
+}
+
+/** Draws a clump centred at (x, y) with footprint radius r; `seed` picks its arrangement. */
+function drawClump(
+  ctx: CanvasRenderingContext2D, hex: string, x: number, y: number, r: number, dpr: number, seed: number,
+  sx = 1, sy = 1, rot = 0,
+): void {
+  if (r <= 0.2 || sx <= 0.01 || sy <= 0.01) return;
+  const c = clumpSprite(hex, r, dpr, ((seed % 4) + 4) % 4);
+  const d = c.width / dpr;
+  if (rot === 0) {
+    ctx.drawImage(c, x - (d * sx) / 2, y - (d * sy) / 2, d * sx, d * sy);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.drawImage(c, (-d * sx) / 2, (-d * sy) / 2, d * sx, d * sy);
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------- background
@@ -346,7 +402,7 @@ function baseLayer(L: Layout, dpr: number): { l: Layer; x: number; y: number } {
 
 // ---------------------------------------------------------------- pieces
 
-function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, dpr: number): void {
+function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, dpr: number, glintColour: number): void {
   const { path, trackW, spacing } = L;
   const now = fx.time;
 
@@ -416,7 +472,57 @@ function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: Bo
     const age = born < 0 ? 1 : clamp((s.scal[S.TIME] - born) / 0.22, 0, 1);
     const k = age < 1 ? Ease.outBack(age) : 1;
     const pc = PALETTE[c];
-    drawBead(ctx, pc.hex, pos[i * 2], pos[i * 2 + 1], L.beadR, dpr, pc.glyph, k, k);
+    drawClump(ctx, pc.hex, pos[i * 2], pos[i * 2 + 1], L.beadR, dpr, i, k, k);
+  }
+
+  // hint "why": the beads waiting for the suggested tube shimmer
+  if (glintColour >= 0) {
+    const r = L.beadR * 1.25;
+    ctx.beginPath();
+    for (let i = 0; i < s.nSlots; i++) {
+      if (s.slotColor[i] !== glintColour) continue;
+      ctx.moveTo(pos[i * 2] + r, pos[i * 2 + 1]);
+      ctx.arc(pos[i * 2], pos[i * 2 + 1], r, 0, Math.PI * 2);
+    }
+    ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.3 * Math.sin(now * 6)})`;
+    ctx.lineWidth = Math.max(1, L.beadR * 0.22);
+    ctx.stroke();
+  }
+}
+
+/** Hint overlays: a "tap here" ripple on the suggested tube, red ✕ on risky ones. */
+function drawGuide(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, g: Advice): void {
+  if (g.tube >= 0) {
+    const tb = L.tubes[g.tube];
+    const cy = tb.y + tb.h * 0.55;
+    for (let k = 0; k < 2; k++) {
+      const ph = (fx.time * 1.1 + k * 0.5) % 1;
+      ctx.beginPath();
+      ctx.arc(tb.cx, cy, lerp(tb.w * 0.25, tb.w * 0.95, Ease.outCubic(ph)), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${(1 - ph) * 0.75})`;
+      ctx.lineWidth = Math.max(1.5, tb.w * 0.06 * (1 - ph * 0.5));
+      ctx.stroke();
+    }
+  }
+  for (let t = 0; t < s.nTubes; t++) {
+    if (!(g.avoid & (1 << t))) continue;
+    const tb = L.tubes[t];
+    const r = tb.w * 0.22;
+    const x = tb.cx;
+    const y = tb.y + tb.w * 0.45;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(THEME.danger, 0.9);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = Math.max(1.5, r * 0.22);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.4, y - r * 0.4);
+    ctx.lineTo(x + r * 0.4, y + r * 0.4);
+    ctx.moveTo(x + r * 0.4, y - r * 0.4);
+    ctx.lineTo(x - r * 0.4, y + r * 0.4);
+    ctx.stroke();
   }
 }
 
@@ -522,7 +628,7 @@ function drawContents(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb:
         for (let j = k * K; j < (k + 1) * K; j++) {
           const pc = PALETTE[beadAt(s, t, j)];
           const p = beadPos(tb, k, j % K);
-          drawBead(g, pc.hex, p.x, p.y, tb.br, dpr, pc.glyph);
+          drawClump(g, pc.hex, p.x, p.y, tb.br, dpr, j);
         }
       }
       cc.key = key;
@@ -540,7 +646,7 @@ function drawContents(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb:
         const sq = landSquash(now - fx.landT[base + j]);
         const sx = 1 + sq * 0.7;
         const sy = 1 - sq;
-        drawBead(ctx, pc.hex, p.x, p.y + tb.br * (1 - sy) * 0.85, tb.br, dpr, pc.glyph, sx, sy);
+        drawClump(ctx, pc.hex, p.x, p.y + tb.br * (1 - sy) * 0.85, tb.br, dpr, j, sx, sy);
       }
       continue;
     }
@@ -566,7 +672,7 @@ function drawContents(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb:
         for (let j = kk * K; j < (kk + 1) * K; j++) {
           const pc = PALETTE[beadAt(s, t, j)];
           const p = beadPos(tb, kk, j % K);
-          drawBead(ctx, pc.hex, p.x, p.y, tb.br, dpr, pc.glyph, bs, bs);
+          drawClump(ctx, pc.hex, p.x, p.y, tb.br, dpr, j, bs, bs);
         }
       }
       ctx.globalAlpha = 1;
@@ -646,7 +752,7 @@ function drawQueue(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: Tu
   const off = fx.qOff[t];
   for (let q = 0; q < show; q++) {
     const pc = PALETTE[queueAt(s, t, q)];
-    drawBead(ctx, pc.hex, tb.cx, y0 + (q + off) * step, qr, dpr, pc.glyph);
+    drawClump(ctx, pc.hex, tb.cx, y0 + (q + off) * step, qr, dpr, s.qHead[t] + q);
   }
 }
 
@@ -666,7 +772,7 @@ function drawFalling(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: 
     const y = lerp(L.loopBottom, end.y, u * u);
     const sc = lerp(start, 1, Ease.outQuad(u));
     const stretch = 0.12 * u * (1 - xu);
-    drawBead(ctx, pc.hex, x, y, tb.br, dpr, pc.glyph, sc * (1 - stretch * 0.5), sc * (1 + stretch));
+    drawClump(ctx, pc.hex, x, y, tb.br, dpr, idx, sc * (1 - stretch * 0.5), sc * (1 + stretch));
   }
 }
 
@@ -681,8 +787,9 @@ function drawFlyers(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: B
     const tb = L.tubes[t];
     const room = Math.max(1, Math.floor((tb.y - L.loopBottom - L.trackW * 0.3) / step));
     const slot = Math.min(s.qLen[t] - fx.pending[t] + rank[t]++, room - 1);
+    const seed = Math.floor(f.x * 3 + f.y);
     if (f.t < 0) {
-      drawBead(ctx, PALETTE[f.color].hex, f.x, f.y, tb.br, dpr, PALETTE[f.color].glyph);
+      drawClump(ctx, PALETTE[f.color].hex, f.x, f.y, tb.br, dpr, seed);
       continue;
     }
     const u = Ease.inOutQuad(clamp(f.t / f.dur, 0, 1));
@@ -692,7 +799,9 @@ function drawFlyers(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: B
     const y = lerp(f.y, ty, u);
     const sc = lerp(1, qr / tb.br, u);
     const st = Math.sin(u * Math.PI) * 0.2;
-    drawBead(ctx, PALETTE[f.color].hex, x, y, tb.br, dpr, PALETTE[f.color].glyph, sc * (1 - st * 0.5), sc * (1 + st));
+    // clumps tumble as they're tossed up into the pipe
+    const spin = u * 2.4 * (seed % 2 ? 1 : -1);
+    drawClump(ctx, PALETTE[f.color].hex, x, y, tb.br, dpr, seed, sc * (1 - st * 0.5), sc * (1 + st), spin);
   }
 }
 
@@ -717,16 +826,19 @@ function drawEffects(ctx: CanvasRenderingContext2D, fx: BoardFx): void {
   ctx.globalAlpha = 1;
 }
 
-export function drawBoard(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, dpr: number, hintTube: number): void {
+export function drawBoard(
+  ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, dpr: number, hintTube: number, guide: Advice | null = null,
+): void {
   const base = baseLayer(L, dpr);
   blit(ctx, base.l, base.x, base.y);
   for (let t = 0; t < s.nTubes; t++) drawPipe(ctx, L, L.tubes[t], PALETTE[s.tubeShell[t]].hex, isOpen(s, t), fx.port[t], dpr);
   for (let t = 0; t < s.nTubes; t++) drawQueue(ctx, s, t, L.tubes[t], L, fx, dpr);
-  drawTrack(ctx, s, L, fx, dpr);
+  drawTrack(ctx, s, L, fx, dpr, guide ? guide.colour : -1);
   const pulse = 0.5 + 0.5 * Math.sin(fx.time * 5);
   for (let t = 0; t < s.nTubes; t++) drawTube(ctx, s, t, L.tubes[t], fx, dpr, t === hintTube ? pulse : 0);
   for (let t = 0; t < s.nTubes; t++) drawFalling(ctx, s, t, L.tubes[t], L, dpr);
   drawFlyers(ctx, s, L, fx, dpr);
+  if (guide) drawGuide(ctx, s, L, fx, guide);
   drawEffects(ctx, fx);
 }
 

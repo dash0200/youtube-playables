@@ -11,8 +11,16 @@ import levelsJson from './levels.json';
 export const LEVELS = levelsJson as LevelData[];
 export const LEVEL_COUNT = LEVELS.length;
 
-export function getLevel(n: number): LevelData {
-  return LEVELS[Math.max(1, Math.min(LEVEL_COUNT, n)) - 1];
+/** Losses in a row on one level before the easier layout is served. */
+export const EASY_AFTER_LOSSES = 2;
+
+/**
+ * Level n, or its easier variant (generated with a kinder difficulty target).
+ * The variant keeps the board settings and par, so stars stay honest.
+ */
+export function getLevel(n: number, easy = false): LevelData {
+  const l = LEVELS[Math.max(1, Math.min(LEVEL_COUNT, n)) - 1];
+  return easy && l.easy ? { ...l, ...l.easy, easy: undefined } : l;
 }
 
 /** 3 stars at or under par, 2 within 1.6x par, else 1. */

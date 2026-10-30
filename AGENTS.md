@@ -90,6 +90,10 @@ npm run test:rust                 # cargo test for the whole workspace
 - Audio: no master mute button. Respect `isAudioEnabled` and `onAudioEnabledChange`
   (`Sfx` does). Sound starts only after a user gesture.
 - `sendScore` takes an integer. The best score sent must equal the best score in the save.
+- Ads only through `Playables.requestRewardedAd` / `requestInterstitialAd` (YouTube-served,
+  no other ad SDKs). Rewarded: opt-in from a clearly labelled button, never automatic, never
+  blocking normal progress; handle 'unavailable' (not all users get ads). Interstitials only at
+  natural breaks, never mid-play, never rewarded. Turn ads on in the Developer Portal.
 - Bundle: relative paths only (`base: './'`), no external network requests or CDN
   fonts, initial bundle < 30 MiB (aim < 15), each file < 30 MiB (aim < 512 KiB),
   ≤ 8000 files, total < 250 MiB. `npm run zip` checks these.

@@ -6,6 +6,7 @@ import { loadIcons, type Icons } from '@shared/ui/icons';
 import { text } from '@shared/ui/draw';
 import { defaultSave, type App, type SaveData } from './app';
 import { MAX_LEVEL, PALETTE } from './game/constants';
+import { EASY_AFTER_LOSSES } from './game/levels';
 import { drawBackground } from './game/render';
 import { MenuScene } from './scenes/menu';
 import { LevelSelectScene } from './scenes/levels';
@@ -71,11 +72,18 @@ function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[
     sim,
     goMenu: () => core.scenes.go(new MenuScene(a)),
     goLevels: () => core.scenes.go(new LevelSelectScene(a)),
-    play: (n) => core.scenes.go(new PlayScene(a, Math.max(1, Math.min(MAX_LEVEL, n)))),
+    play: (n, opts) => core.scenes.go(new PlayScene(a, Math.max(1, Math.min(MAX_LEVEL, n)), opts?.hint ?? false)),
     isUnlocked: (n) => devUnlockAll || n <= save.data.unlocked,
+    needsEasy: (n) => (save.data.losses[n - 1] ?? 0) >= EASY_AFTER_LOSSES,
+    recordLoss(level) {
+      const d = save.data;
+      d.losses[level - 1] = (d.losses[level - 1] ?? 0) + 1;
+      save.save();
+    },
     recordWin(level, seconds, stars) {
       const d = save.data;
       const i = level - 1;
+      d.losses[i] = 0;
       d.stars[i] = Math.max(d.stars[i] ?? 0, stars);
       d.times[i] = d.times[i] ? Math.min(d.times[i], seconds) : seconds;
       d.unlocked = Math.max(d.unlocked, Math.min(level + 1, MAX_LEVEL + 1));

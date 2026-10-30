@@ -8,6 +8,26 @@ export interface Tone {
   type?: OscillatorType;
   gain?: number;
   delay?: number;
+  /** Fade-in time in seconds (default 8 ms). Longer = softer onset. */
+  attack?: number;
+  /** 0..1 amount sent to the shared room reverb. */
+  reverb?: number;
+}
+
+/** Band-filtered white noise: clicks, rattles, rustles, whooshes. */
+export interface Noise {
+  /** Filter centre frequency (Hz). */
+  freq: number;
+  /** Glide the filter to this frequency over the duration. */
+  to?: number;
+  dur: number;
+  /** Filter resonance; higher = more pitched/tonal. */
+  q?: number;
+  type?: BiquadFilterType;
+  gain?: number;
+  delay?: number;
+  attack?: number;
+  reverb?: number;
 }
 
 /**
@@ -23,6 +43,8 @@ export class Sfx {
   volume = 0.55;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private reverbIn: GainNode | null = null;
+  private noiseBuf: AudioBuffer | null = null;
   private enabled = Playables.isAudioEnabled();
   private paused = false;
   private lastPlay = new Map<string, number>();
@@ -42,6 +64,7 @@ export class Sfx {
       this.ctx = new AC();
       this.master = this.ctx.createGain();
       this.master.connect(this.ctx.destination);
+      this.buildRoom(this.ctx, this.master);
       this.apply();
     }
     if (this.ctx.state === 'suspended' && !this.paused) void this.ctx.resume();
@@ -66,30 +89,89 @@ export class Sfx {
     if (this.master) this.master.gain.value = this.enabled ? this.volume : 0;
   }
 
+  /** A small soft room (generated impulse response) plus a reusable noise buffer. */
+  private buildRoom(ctx: AudioContext, out: GainNode): void {
+    const rate = ctx.sampleRate;
+    const len = Math.floor(rate * 1.4);
+    const ir = ctx.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+    }
+    const conv = ctx.createConvolver();
+    conv.buffer = ir;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 4500;
+    this.reverbIn = ctx.createGain();
+    this.reverbIn.gain.value = 0.5;
+    this.reverbIn.connect(conv).connect(damp).connect(out);
+    const nb = ctx.createBuffer(1, Math.floor(rate * 1.5), rate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    this.noiseBuf = nb;
+  }
+
+  private gate(key?: string, minGapMs = 0): AudioContext | null {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.enabled || this.paused) return null;
+    if (key) {
+      const now = performance.now();
+      if (now - (this.lastPlay.get(key) ?? -1e9) < minGapMs) return null;
+      this.lastPlay.set(key, now);
+    }
+    return ctx;
+  }
+
+  /** Envelope gain node routed to the master (and optionally the room). */
+  private voice(ctx: AudioContext, start: number, dur: number, gain: number, attack: number, reverb: number): GainNode {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(gain, start + Math.min(attack, dur * 0.5));
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    g.connect(this.master!);
+    if (reverb > 0 && this.reverbIn) {
+      const send = ctx.createGain();
+      send.gain.value = reverb;
+      g.connect(send).connect(this.reverbIn);
+    }
+    return g;
+  }
+
+  /** Plays filtered-noise voices (same throttling as `play`). */
+  noise(voices: Noise[], key?: string, minGapMs = 0): void {
+    const ctx = this.gate(key, minGapMs);
+    if (!ctx || !this.noiseBuf) return;
+    const t0 = ctx.currentTime;
+    for (const v of voices) {
+      const start = t0 + (v.delay ?? 0);
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+      const f = ctx.createBiquadFilter();
+      f.type = v.type ?? 'bandpass';
+      f.Q.value = v.q ?? 1;
+      f.frequency.setValueAtTime(v.freq, start);
+      if (v.to) f.frequency.exponentialRampToValueAtTime(v.to, start + v.dur);
+      src.connect(f).connect(this.voice(ctx, start, v.dur, v.gain ?? 0.2, v.attack ?? 0.002, v.reverb ?? 0));
+      src.start(start, Math.random() * Math.max(0, this.noiseBuf.duration - v.dur - 0.06), v.dur + 0.05);
+    }
+  }
+
   /**
    * Plays a list of tones. `key` + `minGapMs` throttle rapid repeats
    * (e.g. dozens of beads landing in one frame).
    */
   play(tones: Tone[], key?: string, minGapMs = 0): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.master || !this.enabled || this.paused) return;
-    if (key) {
-      const now = performance.now();
-      if (now - (this.lastPlay.get(key) ?? -1e9) < minGapMs) return;
-      this.lastPlay.set(key, now);
-    }
+    const ctx = this.gate(key, minGapMs);
+    if (!ctx) return;
     const t0 = ctx.currentTime;
     for (const t of tones) {
       const start = t0 + (t.delay ?? 0);
       const osc = ctx.createOscillator();
-      const g = ctx.createGain();
       osc.type = t.type ?? 'sine';
       osc.frequency.setValueAtTime(t.freq, start);
       if (t.to) osc.frequency.exponentialRampToValueAtTime(t.to, start + t.dur);
-      g.gain.setValueAtTime(0.0001, start);
-      g.gain.exponentialRampToValueAtTime(t.gain ?? 0.3, start + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, start + t.dur);
-      osc.connect(g).connect(this.master);
+      osc.connect(this.voice(ctx, start, t.dur, t.gain ?? 0.3, t.attack ?? 0.008, t.reverb ?? 0));
       osc.start(start);
       osc.stop(start + t.dur + 0.02);
     }

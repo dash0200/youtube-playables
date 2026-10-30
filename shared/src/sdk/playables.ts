@@ -19,6 +19,8 @@ const IN_PLAYABLES = !!(yt && yt.IN_PLAYABLES_ENV);
 const DEV_SAVE_KEY = `ytp-save:${__GAME_ID__}`;
 
 let loadedOnce = false;
+/** Length of the simulated ad outside YouTube. */
+const DEV_AD_MS = 1200;
 const devPause: Array<() => void> = [];
 const devResume: Array<() => void> = [];
 let devPaused = false;
@@ -91,6 +93,42 @@ export const Playables = {
       await yt!.engagement.sendScore({ value: v });
     } catch (e) {
       console.warn('[playables] sendScore failed', e);
+    }
+  },
+
+  /**
+   * Opt-in rewarded ad. Rules (Playables certification): start it only from a
+   * clearly labelled button, never automatically, and never block normal
+   * progress behind it. `rewardId` is a fixed name per reward type (no user
+   * data). Returns 'granted' when the player earned the reward, 'declined' when
+   * they skipped it, and 'unavailable' when no ad could be shown (ads only reach
+   * some users), so give the reward anyway or offer another path.
+   * Outside YouTube it simulates a short ad and grants.
+   */
+  async requestRewardedAd(rewardId: string): Promise<'granted' | 'declined' | 'unavailable'> {
+    if (!IN_PLAYABLES) {
+      console.info('[playables:dev] rewarded ad', rewardId);
+      await new Promise((r) => setTimeout(r, DEV_AD_MS));
+      return 'granted';
+    }
+    try {
+      return (await yt!.ads.requestRewardedAd(rewardId)) ? 'granted' : 'declined';
+    } catch (e) {
+      console.warn('[playables] rewarded ad unavailable', e);
+      return 'unavailable';
+    }
+  },
+
+  /** Interstitial ad at a natural break (between levels, after game over), never mid-play. Never reward on it. */
+  async requestInterstitialAd(): Promise<void> {
+    if (!IN_PLAYABLES) {
+      console.info('[playables:dev] interstitial ad');
+      return;
+    }
+    try {
+      await yt!.ads.requestInterstitialAd();
+    } catch (e) {
+      console.warn('[playables] interstitial ad unavailable', e);
     }
   },
 

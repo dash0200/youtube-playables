@@ -7,7 +7,7 @@
 //! cargo run --release -p bead-loop-tools --bin difficulty -- <levels.json> [level]
 //! With a level number, prints its naive win rate over many seed batches instead.
 use bead_loop::bot::{self, nominal_ports};
-use bead_loop_tools::{from_json, naive_policy, naive_rate, play_policy, random_policy, target, LevelJson};
+use bead_loop_tools::{easy_from_json, easy_target, from_json, naive_policy, naive_rate, play_policy, random_policy, target, LevelJson};
 
 const RUNS: u32 = 60;
 
@@ -20,7 +20,7 @@ fn main() {
         println!("level {n}: naive win % per 40-game batch: {} (target {:.0})", batches.join(" "), target(n as u32) * 100.0);
         return;
     }
-    println!("level col cap slots speed  par | random% naive% target% naive3★% | slowbot");
+    println!("level col cap slots speed  par | random% naive% target% naive3★% | easy% target% | slowbot");
     let mut sum = [0u32; 3];
     for j in &levels {
         let l = from_json(j);
@@ -38,13 +38,15 @@ fn main() {
             }
         }
         let slow = bot::play_with(&l, &nominal_ports(l.colors), 0.8, 1.0 / 30.0, 400.0);
+        let easy = easy_from_json(j).map_or(-1.0, |e| naive_rate(&e, RUNS, 9000) * 100.0);
         sum[0] += rnd * 100 / RUNS;
         sum[1] += nav * 100 / RUNS;
         sum[2] += u32::from(slow.is_some());
         println!(
-            "{:>5} {:>3} {:>3} {:>5} {:>5.1} {:>4} | {:>7} {:>6} {:>7.0} {:>9} | {}",
+            "{:>5} {:>3} {:>3} {:>5} {:>5.1} {:>4} | {:>7} {:>6} {:>7.0} {:>9} | {:>5.0} {:>7.0} | {}",
             j.n, l.colors, l.cap, l.slots, l.speed, j.par,
             rnd * 100 / RUNS, nav * 100 / RUNS, target(j.n) * 100.0, nav3 * 100 / RUNS,
+            easy, easy_target(j.n) * 100.0,
             slow.map_or("jam".to_string(), |s| format!("{s:.0}s")),
         );
     }

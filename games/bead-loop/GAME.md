@@ -164,6 +164,13 @@ target (measurement noise plus layout luck); the band averages are on target.
   rate over 10 seed batches (batch-to-batch noise is about ±8 points). `probe`
   maps solvability and naive rate against loop room for chosen levels.
 
+### Slow toggle
+A **Slow** button (hourglass, next to Back) runs the whole sim at 0.6× (`SLOW_SPEED`
+in play.ts): belt, falls, and the jam countdown, so a player who wants time to think
+can take it. The choice is saved (`SaveData.slow`) and kept across levels. The timer,
+stars and best times use **real seconds played** (`PlayScene.elapsed`), so slow mode
+costs time instead of handing out cheap 3-star clears.
+
 ### Guided hint (rewarded ad)
 The **Hint** button (top centre) and **Retry with a hint** (lose panel) offer an
 opt-in rewarded ad (`Playables.requestRewardedAd('hint')`). If the ad is
@@ -194,8 +201,8 @@ honest. Restarting mid-level doesn't count as a loss.
   (raise the count in game.json scripts.levels) over editing early params.
 
 ## Save data (`SaveData` in app.ts, version 1)
-`{ unlocked, stars[], times[], scoreSent, losses[] }` (`losses` = jams in a row per
-level, drives the easier retry). Saved on win, on loss and on pause. Score
+`{ unlocked, stars[], times[], scoreSent, losses[], slow }` (`losses` = jams in a row
+per level, drives the easier retry; `slow` = the Slow toggle). Saved on win, on loss and on pause. Score
 sent to YouTube = levels cleared (`unlocked - 1`), kept equal to the save.
 Add fields freely; renames need a version bump + `migrate`.
 

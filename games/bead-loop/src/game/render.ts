@@ -843,12 +843,13 @@ export function drawBoard(
 }
 
 /** Level, timer, belt-fill meter and hints inside the loop. */
-export function drawLoopInfo(ctx: CanvasRenderingContext2D, s: SimState, level: number, par: number, L: Layout, fx: BoardFx, hint: string[] | null): void {
+export function drawLoopInfo(
+  ctx: CanvasRenderingContext2D, s: SimState, level: number, par: number, secs: number, L: Layout, fx: BoardFx, hint: string[] | null,
+): void {
   const { x, y, w, h } = L.inner;
   const cx = x + w / 2;
   const sz = Math.min(w, h * 1.6);
   text(ctx, `LEVEL ${level}`, cx, y + h * 0.17, sz * 0.062, THEME.textDim, { weight: 800 });
-  const secs = s.scal[S.ELAPSED];
   text(ctx, `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, '0')}`, cx, y + h * 0.37, sz * 0.13, THEME.text, { weight: 800, shadow: 'rgba(0,0,0,0.35)' });
 
   // belt capacity meter (eased, colour blends green → yellow → red)

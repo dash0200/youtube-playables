@@ -6,9 +6,11 @@ import grid from '@shared-assets/icons/grid.svg';
 import lock from '@shared-assets/icons/lock.svg';
 import menu from '@shared-assets/icons/menu.svg';
 import hint from '@shared-assets/icons/hint.svg';
+import fast from '@shared-assets/icons/fast.svg';
+import slow from '@shared-assets/icons/slow.svg';
 
 /** Shared UI icons (white, drawn on canvas). Add new ones to shared/assets/icons and here. */
-export const ICON_URLS = { back, next, restart, play, grid, lock, menu, hint } as const;
+export const ICON_URLS = { back, next, restart, play, grid, lock, menu, hint, fast, slow } as const;
 export type IconName = keyof typeof ICON_URLS;
 export type Icons = Record<IconName, HTMLImageElement>;
 

@@ -19,6 +19,9 @@ import { EV, K, S, beadAt, isOpen, type LevelData } from '../sim';
 
 type Result = 'none' | 'win' | 'lose';
 
+/** Game speed while the player has Slow switched on (the whole sim runs slower). */
+const SLOW_SPEED = 0.6;
+
 export class PlayScene implements Scene {
   private readonly level: LevelData;
   private L!: Layout;
@@ -41,6 +44,9 @@ export class PlayScene implements Scene {
   /** Guided hint (earned with an opt-in rewarded ad, or free when no ad is available). */
   private guide = new HintGuide();
   private hintBtn: Button;
+  private speedBtn: Button;
+  /** Real seconds played since the first tap: stars and best times use this, so slow mode costs time. */
+  private elapsed = 0;
   /** A rewarded ad is showing: the game waits. */
   private adPending = false;
   private toast = { text: '', t: 0 };
@@ -61,6 +67,15 @@ export class PlayScene implements Scene {
         if (!this.guide.active && this.result === 'none') this.rewardHint(() => this.startHint());
       }),
     }));
+    this.speedBtn = this.hud.add(new Button({
+      label: 'Slow', icon: icons.slow, style: 'ghost', color: THEME.accent,
+      onTap: () => this.click(() => {
+        app.save.data.slow = !app.save.data.slow;
+        app.save.save();
+        this.syncSpeedBtn();
+      }),
+    }));
+    this.syncSpeedBtn();
     if (import.meta.env.DEV) {
       // Dev-only "Solve": the level plays itself (stripped from production builds).
       const solve = this.hud.add(new Button({
@@ -84,6 +99,15 @@ export class PlayScene implements Scene {
     }));
     this.losePanel.add(new Button({ label: 'Retry', icon: icons.restart, color: THEME.accent, onTap: () => this.click(() => app.play(levelNum)) }));
     this.losePanel.add(new Button({ icon: icons.grid, color: '#5b4a8f', onTap: () => this.click(() => app.goLevels()) }));
+  }
+
+  private get speed(): number {
+    return this.app.save.data.slow ? SLOW_SPEED : 1;
+  }
+
+  /** Filled when slow mode is on. */
+  private syncSpeedBtn(): void {
+    this.speedBtn.opts.style = this.app.save.data.slow ? 'pill' : 'ghost';
   }
 
   private click(fn: () => void): void {
@@ -139,7 +163,12 @@ export class PlayScene implements Scene {
     this.hud.list[0].set(colX + m, hudY, btn, btn);
     this.hud.list[1].set(colX + colW - m - btn, hudY, btn, btn);
     this.hud.list[2].set(w / 2 - btn * 1.4, hudY, btn * 2.8, btn);
-    this.hud.list[3]?.set(w / 2 - btn * 1.4, hudY + btn * 1.15, btn * 2.8, btn * 0.8); // dev Solve
+    // Slow toggle between Back and Hint, or under Back when the column is narrow
+    const left = colX + m + btn * 1.12;
+    const room = w / 2 - btn * 1.5 - left;
+    if (room >= btn * 1.4) this.hud.list[3].set(left, hudY + btn * 0.12, Math.min(btn * 1.9, room), btn * 0.76);
+    else this.hud.list[3].set(colX + m, hudY + btn * 1.15, btn * 1.9, btn * 0.7);
+    this.hud.list[4]?.set(w / 2 - btn * 1.4, hudY + btn * 1.15, btn * 2.8, btn * 0.8); // dev Solve
     const pw = Math.min(colW * 0.84, 380);
     const bh = clamp(pw * 0.17, 46, 62);
     const px = w / 2 - pw / 2;
@@ -162,7 +191,8 @@ export class PlayScene implements Scene {
     const sim = this.app.sim;
     const s = sim.s;
     if (this.auto && this.result === 'none') this.auto.update(dt, s, (t) => this.tapTube(t));
-    sim.update(dt);
+    if (this.result === 'none' && s.scal[S.STARTED]) this.elapsed += dt;
+    sim.update(dt * this.speed);
     sim.computePositions();
     const n = sim.eventCount();
     const snd = this.sounds;
@@ -209,7 +239,7 @@ export class PlayScene implements Scene {
 
   private onWin(): void {
     const s = this.app.sim.s;
-    const secs = s.scal[S.ELAPSED];
+    const secs = this.elapsed;
     this.result = 'win';
     this.resultT = 0;
     this.stars = starsFor(secs, this.level.par);
@@ -249,7 +279,7 @@ export class PlayScene implements Scene {
     const hint = g ? null : this.hint();
     drawBoard(ctx, s, L, this.board, this.app.stage.dpr, g ? g.tube : hint?.tube ?? -1, g);
     const lines = g ? [g.tube >= 0 ? 'Tap the glowing tube' : 'Let it flow\u2026'] : hint?.lines ?? null;
-    drawLoopInfo(ctx, s, this.levelNum, this.level.par, L, this.board, lines);
+    drawLoopInfo(ctx, s, this.levelNum, this.level.par, this.elapsed, L, this.board, lines);
     this.hud.draw(ctx);
     if (g) this.drawHintTimer(ctx);
     if (this.toast.t > 0) {
@@ -310,7 +340,7 @@ export class PlayScene implements Scene {
     text(ctx, `Level ${this.levelNum}`, W / 2, py + pw * 0.25, pw * 0.055, THEME.textDim, { weight: 700 });
     const shown = Math.min(this.stars, Math.floor((this.resultT - 0.7) / 0.18) + 1);
     drawStars(ctx, W / 2, py + pw * 0.42, pw * 0.075, Math.max(0, shown), 3, THEME.star);
-    const secs = this.app.sim.s.scal[S.ELAPSED];
+    const secs = this.elapsed;
     text(ctx, `${secs.toFixed(1)}s${this.best ? '  ·  best!' : ''}`, W / 2, py + pw * 0.58, pw * 0.07, THEME.text, { weight: 800 });
     text(ctx, `3★ under ${this.level.par}s`, W / 2, py + pw * 0.67, pw * 0.045, THEME.textDim, { weight: 600 });
     ctx.restore();

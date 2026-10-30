@@ -17,6 +17,9 @@ import { EV, Sim } from '../sim/sim';
 type Result = 'none' | 'win' | 'lose';
 const hex = (c: number): string => PALETTE[c].hex;
 
+/** Game speed while the player has fast-forward on (the whole sim runs faster). */
+const FAST_SPEED = 2;
+
 /** Levels that coach the player (the planner's advice is shown) until they've flipped a few gates. */
 const TUTORIAL_LEVELS = 2;
 
@@ -39,6 +42,9 @@ export class PlayScene implements Scene {
   /** fx time of the last marble drop (hopper queue slides). */
   private spawnT = -9;
   private taps = 0;
+  private speedBtn: Button;
+  /** Real seconds since the level started: stars and best times use this, so fast-forward can earn them. */
+  private elapsed = 0;
   private advice: Advice | null = null;
   private adviceT = 0;
   /** DEV ONLY: the Solve button lets the planning bot play. */
@@ -53,6 +59,15 @@ export class PlayScene implements Scene {
     const { icons } = app;
     this.hud.add(new Button({ icon: icons.back, style: 'ghost', onTap: () => this.click(() => app.goLevels()) }));
     this.hud.add(new Button({ icon: icons.restart, style: 'ghost', onTap: () => this.click(() => app.play(levelNum)) }));
+    this.speedBtn = this.hud.add(new Button({
+      label: '2\u00d7', icon: icons.fast, style: 'ghost', color: THEME.accent,
+      onTap: () => this.click(() => {
+        app.save.data.fast = !app.save.data.fast;
+        app.save.save();
+        this.syncSpeedBtn();
+      }),
+    }));
+    this.syncSpeedBtn();
     if (import.meta.env.DEV) {
       // Dev-only "Solve": the planning bot plays (stripped from production builds).
       const solve = this.hud.add(new Button({
@@ -74,6 +89,15 @@ export class PlayScene implements Scene {
     this.losePanel.add(new Button({ label: 'Levels', icon: icons.grid, color: '#2b5a63', onTap: () => this.click(() => app.goLevels()) }));
   }
 
+  private get speed(): number {
+    return this.app.save.data.fast ? FAST_SPEED : 1;
+  }
+
+  /** Filled when fast-forward is on. */
+  private syncSpeedBtn(): void {
+    this.speedBtn.opts.style = this.app.save.data.fast ? 'pill' : 'ghost';
+  }
+
   private click(fn: () => void): void {
     this.app.sfx.click();
     fn();
@@ -88,7 +112,12 @@ export class PlayScene implements Scene {
     const m = colW * 0.05;
     this.hud.list[0].set(colX + m, hudY, btn, btn);
     this.hud.list[1].set(colX + colW - m - btn, hudY, btn, btn);
-    this.hud.list[2]?.set(colX + colW - m - btn * 3.6, hudY + btn * 0.15, btn * 2.4, btn * 0.7); // dev Solve
+    // fast-forward between Back and the level title, or under Back when the column is narrow
+    const left = colX + m + btn * 1.12;
+    const room = w / 2 - btn * 1.25 - left;
+    if (room >= btn * 1.3) this.hud.list[2].set(left, hudY + btn * 0.12, Math.min(btn * 1.7, room), btn * 0.76);
+    else this.hud.list[2].set(colX + m, hudY + btn * 1.15, btn * 1.7, btn * 0.7);
+    this.hud.list[3]?.set(colX + colW - m - btn * 3.6, hudY + btn * 0.15, btn * 2.4, btn * 0.7); // dev Solve
     const pw = Math.min(colW * 0.84, 380);
     const bh = clamp(pw * 0.17, 46, 62);
     const px = w / 2 - pw / 2;
@@ -115,7 +144,8 @@ export class PlayScene implements Scene {
           if (a.gate >= 0) this.tapGate(a.gate);
         }
       }
-      sim.update(dt);
+      this.elapsed += dt;
+      sim.update(dt * this.speed);
       for (const e of sim.events) {
         this.fx.onEvent(e, sim, this.L, hex);
         if (e.type === EV.SPAWN) {
@@ -145,7 +175,7 @@ export class PlayScene implements Scene {
   }
 
   private onWin(): void {
-    const secs = this.sim.time;
+    const secs = this.elapsed;
     this.result = 'win';
     this.resultT = 0;
     this.stars = starsFor(secs, this.sim.level.par);
@@ -219,7 +249,7 @@ export class PlayScene implements Scene {
     text(ctx, `Level ${this.levelNum}`, W / 2, py + pw * 0.25, pw * 0.055, THEME.textDim, { weight: 700 });
     const shown = Math.min(this.stars, Math.floor((this.resultT - 0.7) / 0.18) + 1);
     drawStars(ctx, W / 2, py + pw * 0.42, pw * 0.075, Math.max(0, shown), 3, THEME.star);
-    const secs = this.sim.time;
+    const secs = this.elapsed;
     text(ctx, `${secs.toFixed(1)}s${this.best ? '  ·  best!' : ''}`, W / 2, py + pw * 0.58, pw * 0.07, THEME.text, { weight: 800 });
     text(ctx, `3★ under ${this.sim.level.par}s`, W / 2, py + pw * 0.67, pw * 0.045, THEME.textDim, { weight: 600 });
     ctx.restore();

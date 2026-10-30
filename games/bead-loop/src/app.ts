@@ -14,9 +14,11 @@ export interface SaveData {
   scoreSent: number;
   /** Losses in a row per level, index = level - 1 (reset on a win). */
   losses: number[];
+  /** Player prefers the slowed-down loop (remembered across levels). */
+  slow: boolean;
 }
 
-export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0, losses: [] });
+export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0, losses: [], slow: false });
 
 /** Services shared by all scenes. Implemented in main.ts. */
 export interface App extends Core {

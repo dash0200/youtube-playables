@@ -61,6 +61,12 @@ Unlike Bead Loop there is no Rust/WebAssembly sim: a level has at most a dozen
 marbles and 5 gates, so the TypeScript sim is far below a millisecond per frame,
 and the same code runs in the game and in the generator (no parity to keep).
 
+## Fast-forward
+A **2×** button (next to Back) runs the whole sim at double speed (`FAST_SPEED` in
+play.ts), so players who've planned their routes don't wait for marbles. The choice
+is saved (`SaveData.fast`). Stars and best times use **real seconds** (`elapsed`), so
+fast-forward can earn 3 stars if you keep up; levels are verified and tuned at 1×.
+
 ## Levels and difficulty
 - 60 levels. Board size in `params()` (`src/tools/generate.ts`): cups 2 → 3 → 4 →
   5 → 6 (levels 1-2, 3-6, 7-14, 15-28, 29+), cup size 3 → 4 → 5, colours ≤ cups.
@@ -85,7 +91,7 @@ and the same code runs in the game and in the generator (no parity to keep).
 - Levels 1-2 coach the player (the planner's advice glows) until 4 flips.
 
 ## Save data (`SaveData` in app.ts, version 1)
-`{ unlocked, stars[], times[], scoreSent }`. Saved on win and on pause. Score sent
+`{ unlocked, stars[], times[], scoreSent, fast }` (`fast` = the 2× toggle). Saved on win and on pause. Score sent
 to YouTube = levels cleared, kept equal to the save. Add fields freely; renames
 need a version bump + `migrate`.
 

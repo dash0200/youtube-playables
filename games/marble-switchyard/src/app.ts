@@ -11,9 +11,11 @@ export interface SaveData {
   times: number[];
   /** Last score sent to YouTube (= levels cleared). */
   scoreSent: number;
+  /** Player prefers fast-forward (remembered across levels). */
+  fast: boolean;
 }
 
-export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0 });
+export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [], scoreSent: 0, fast: false });
 
 /** Services shared by all scenes. Implemented in main.ts. */
 export interface App extends Core {

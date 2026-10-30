@@ -51,15 +51,31 @@ npm run test:rust                 # cargo test for the whole workspace
 ```
 
 ## Rust / WebAssembly
-- Hot game logic (simulation, per-frame geometry) lives in Rust: `no_std`, **no
-  allocator**, fixed-size struct-of-arrays state, exported with `#[no_mangle] extern "C"`.
-  JS reads state through zero-copy typed-array views (memory never grows).
-- Heavy offline work (level generation + solver verification) runs as native Rust tools.
-- Each game keeps a TypeScript mirror of its sim as a fallback, kept identical by a
-  checksum parity test. Rule changes go into BOTH and must pass `npm run parity`.
-- `npm run build`/`zip` try to build wasm first. Without Rust installed they warn and
-  use the committed `.wasm` (or the TS fallback). **Commit the built .wasm.**
+- **Policy: every game runs its simulation in Rust compiled to WebAssembly, and ships
+  with it** (the live web demos and the Playables zips). New games follow the same
+  layout: `rust/crates/<game>` (rules), `<game>-wasm` (C-ABI exports), `<game>-tools`
+  (native tools: parity trace, generators where they live in Rust), plus
+  `"wasm": { "crate": "<game>-wasm", "out": "src/wasm/<game>.wasm" }` and a
+  `scripts.parity` entry in game.json.
+- Rules in Rust: `no_std`, **no allocator**, fixed-size struct-of-arrays state, exported
+  with `#[no_mangle] extern "C"`. JS reads state through zero-copy typed-array views
+  (memory never grows). If two sims can be alive at once (e.g. a menu demo board and a
+  level during a scene fade), keep a few static slots and pass a slot index.
+- Each game keeps a TypeScript copy of its sim as the fallback (and for tools that run
+  in Node), kept identical by a checksum parity test. Rule changes go into BOTH and must
+  pass `npm run test:rust` and `npm run parity -- <game>`, then rebuild the wasm.
+- In the browser, also compare a scripted session on the wasm sim and the TS sim (same
+  checksums); both games do this in their headless checks.
+- **Commit the built .wasm** (`games/<game>/src/wasm/*.wasm`). `npm run build`/`zip` try to
+  rebuild it first; without Rust (e.g. on Vercel) they warn and bundle the committed
+  file, so deploys always ship WebAssembly. If no .wasm exists the TS fallback runs.
 - Setup: install Rust from https://rustup.rs, then `rustup target add wasm32-unknown-unknown`.
+  **Windows without the Visual Studio C++ build tools:** `npm run wasm`/`build` retry
+  automatically with an installed `*-pc-windows-gnu` toolchain that has the wasm32
+  target (`rustup toolchain install stable-x86_64-pc-windows-gnu` +
+  `rustup +<that toolchain> target add wasm32-unknown-unknown`). Native tools
+  (`test:rust`, `parity`, `levels`) need it set explicitly in PowerShell:
+  `$env:RUSTUP_TOOLCHAIN='<gnu toolchain>'; $env:CARGO_TARGET_DIR="$PWD\rust\target\gnu"`.
 - Shared loader: `shared/src/wasm/load.ts` (`instantiateWasm`). Import wasm with
   `import.meta.glob('./wasm/*.wasm', { query: '?url', import: 'default', eager: true })`
   so the bundle still builds before the first wasm build.

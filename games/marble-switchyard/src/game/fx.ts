@@ -1,4 +1,4 @@
-import { EV, type Sim, type SimEvent } from '../sim/sim';
+import { EV, type MarbleSim, type SimEvent } from '../sim/sim';
 import type { Layout, Pt } from './layout';
 
 /**
@@ -24,7 +24,7 @@ export class BoardFx {
   flyers: Flyer[] = [];
   winT = -9;
 
-  reset(sim: Sim): void {
+  reset(sim: MarbleSim): void {
     this.time = 0;
     this.flip = sim.gate.map((g) => g.state);
     this.passT = sim.gate.map(() => -9);
@@ -37,7 +37,7 @@ export class BoardFx {
     this.winT = -9;
   }
 
-  update(dt: number, sim: Sim): void {
+  update(dt: number, sim: MarbleSim): void {
     this.time += dt;
     const k = 1 - Math.exp(-dt * 22);
     sim.gate.forEach((g, i) => (this.flip[i] += (g.state - this.flip[i]) * k));
@@ -58,7 +58,7 @@ export class BoardFx {
   }
 
   /** Turns a sim event into effects. */
-  onEvent(e: SimEvent, sim: Sim, L: Layout, hex: (color: number) => string): void {
+  onEvent(e: SimEvent, sim: MarbleSim, L: Layout, hex: (color: number) => string): void {
     const now = this.time;
     if (e.type === EV.PASS) {
       this.passT[e.a] = now;

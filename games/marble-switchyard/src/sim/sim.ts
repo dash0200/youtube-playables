@@ -3,6 +3,11 @@
  * distances are in "rows" of the track, so the same code runs in the game and
  * in the offline level generator (src/tools/generate.ts).
  *
+ * This TypeScript version is the fallback when WebAssembly isn't available and
+ * is what the level generator runs. The game normally runs the Rust port
+ * (rust/crates/marble-switchyard, compiled to wasm), which MUST stay
+ * step-for-step identical: `npm run parity -- marble-switchyard` checks it.
+ *
  * Rules
  * - The track is a binary tree. Marbles drop from the hopper onto the root and
  *   roll down; at each GATE they take the branch the gate points to. Leaves
@@ -89,6 +94,38 @@ export const HOPPER_DROP = 1;
 /** Seconds before the first marble leaves the hopper. */
 export const FIRST_DROP = 1.2;
 
+/**
+ * What the game, the bot, the renderer and the effects use: implemented by the
+ * TypeScript `Sim` below and by `WasmSim` (the Rust sim in WebAssembly).
+ */
+export interface MarbleSim {
+  readonly backend: 'wasm' | 'ts';
+  readonly level: LevelData;
+  readonly nodes: TreeNode[];
+  readonly gateNode: number[];
+  readonly cupNode: number[];
+  readonly gate: { state: number; auto: boolean; link: number }[];
+  readonly cups: { color: number; cap: number; count: number }[];
+  marbles: Marble[];
+  queue: number[];
+  events: SimEvent[];
+  spills: number;
+  readonly maxSpills: number;
+  time: number;
+  won: boolean;
+  lost: boolean;
+  readonly interval: number;
+  readonly speed: number;
+  readonly over: boolean;
+  /** Seconds until the next marble leaves the hopper (0 if it's waiting to). */
+  readonly nextDrop: number;
+  edgeLen(node: number): number;
+  tap(g: number): boolean;
+  update(dt: number): void;
+  /** State hash for parity checks (same algorithm as the Rust sim). */
+  checksum(): number;
+}
+
 export function parseTree(tree: string): TreeNode[] {
   const nodes: TreeNode[] = [];
   let i = 0;
@@ -115,7 +152,8 @@ export function parseTree(tree: string): TreeNode[] {
   return nodes;
 }
 
-export class Sim {
+export class Sim implements MarbleSim {
+  readonly backend = 'ts' as const;
   readonly nodes: TreeNode[];
   readonly gateNode: number[] = [];
   readonly cupNode: number[] = [];
@@ -211,6 +249,32 @@ export class Sim {
       }
       if (this.over) return;
     }
+  }
+
+  /** Order-sensitive FNV-1a hash, identical to Sim::checksum in sim.rs (floats as floor(x * 1e6)). */
+  checksum(): number {
+    let h = 0x811c9dc5;
+    const mix = (b: number) => {
+      h = Math.imul(h ^ b, 0x01000193) >>> 0;
+    };
+    const fx = (x: number) => Math.floor(x * 1e6) >>> 0;
+    mix(fx(this.time));
+    mix(fx(this.spawnT));
+    mix(this.marbles.length);
+    for (const m of this.marbles) {
+      mix(m.id);
+      mix(m.color);
+      mix(m.to);
+      mix(fx(m.d));
+    }
+    for (const g of this.gate) mix(g.state);
+    for (const c of this.cups) mix(c.count);
+    mix(this.queue.length);
+    for (const c of this.queue) mix(c);
+    mix(this.spills);
+    mix(this.won ? 1 : 0);
+    mix(this.lost ? 1 : 0);
+    return h >>> 0;
   }
 
   private land(m: Marble, c: number): void {

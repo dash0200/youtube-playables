@@ -80,21 +80,39 @@ function buildWasm(game, { required = false } = {}) {
   if (!cfg) return true;
   const rustDir = join(root, 'rust');
   console.log(`\n▶ Building Rust crate ${cfg.crate} → wasm`);
-  const r = spawnSync('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', '-p', cfg.crate], {
-    cwd: rustDir, stdio: 'inherit', shell: process.platform === 'win32',
+  const cargo = (env) => spawnSync('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', '-p', cfg.crate], {
+    cwd: rustDir, stdio: 'inherit', shell: process.platform === 'win32', env: { ...process.env, ...env },
   });
+  let r = cargo({});
+  const gnu = r.status !== 0 && !process.env.RUSTUP_TOOLCHAIN ? windowsGnuToolchain() : null;
+  if (gnu) {
+    // Windows without the MSVC C++ build tools can't link build scripts; a GNU toolchain can.
+    console.log(`  ↻ retrying with the ${gnu} toolchain`);
+    r = cargo({ RUSTUP_TOOLCHAIN: gnu });
+  }
   if (r.status !== 0) {
     const msg = 'Rust → wasm build failed. Install Rust (https://rustup.rs) and run: rustup target add wasm32-unknown-unknown';
     if (required) die(msg);
     console.warn(`  ⚠ ${msg}\n  ⚠ Continuing with the existing .wasm (or the TypeScript fallback if none).`);
     return false;
   }
-  const built = join(rustDir, 'target', 'wasm32-unknown-unknown', 'release', `${cfg.crate.replaceAll('-', '_')}.wasm`);
+  const targetDir = process.env.CARGO_TARGET_DIR ? resolve(rustDir, process.env.CARGO_TARGET_DIR) : join(rustDir, 'target');
+  const built = join(targetDir, 'wasm32-unknown-unknown', 'release', `${cfg.crate.replaceAll('-', '_')}.wasm`);
   const out = join(gamesDir, game, cfg.out);
   mkdirSync(resolve(out, '..'), { recursive: true });
   cpSync(built, out);
   console.log(`  ✔ ${relative(root, out)} (${fmt(statSync(out).size)})`);
   return true;
+}
+
+/** An installed *-pc-windows-gnu toolchain that has the wasm32 target, on Windows only. */
+function windowsGnuToolchain() {
+  if (process.platform !== 'win32') return null;
+  const list = spawnSync('rustup', ['toolchain', 'list'], { encoding: 'utf8', shell: true });
+  const name = (list.stdout ?? '').split(/\r?\n/).map((l) => l.split(' ')[0]).find((t) => /windows-gnu$/.test(t));
+  if (!name) return null;
+  const targets = spawnSync('rustup', [`+${name}`, 'target', 'list', '--installed'], { encoding: 'utf8', shell: true });
+  return (targets.stdout ?? '').includes('wasm32-unknown-unknown') ? name : null;
 }
 
 function runTask(task, game) {

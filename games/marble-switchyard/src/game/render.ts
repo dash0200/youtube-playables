@@ -4,7 +4,7 @@ import { rgba, shade } from '@shared/ui/color';
 import { roundRect, text } from '@shared/ui/draw';
 import { drawGlyph } from '@shared/ui/glyphs';
 import { drawBead } from '@shared/ui/sprites';
-import { Kind, type Sim } from '../sim/sim';
+import { Kind, type MarbleSim } from '../sim/sim';
 import type { Advice } from '../sim/bot';
 import { PALETTE, THEME } from './constants';
 import type { BoardFx } from './fx';
@@ -89,7 +89,7 @@ function marble(ctx: CanvasRenderingContext2D, color: number, x: number, y: numb
 
 // ---------------------------------------------------------------- pieces
 
-function drawRails(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx: BoardFx): void {
+function drawRails(ctx: CanvasRenderingContext2D, sim: MarbleSim, L: Layout, fx: BoardFx): void {
   const active = sim.nodes.map((n, i) => {
     if (n.parent < 0) return true;
     const p = sim.nodes[n.parent];
@@ -115,7 +115,7 @@ function drawRails(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx: Board
   }
 }
 
-function drawHopper(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx: BoardFx, dpr: number, spawnT: number, hintMarble: number): void {
+function drawHopper(ctx: CanvasRenderingContext2D, sim: MarbleSim, L: Layout, fx: BoardFx, dpr: number, spawnT: number, hintMarble: number): void {
   const { hopper: h, drop, r } = L;
   roundRect(ctx, h.x, h.y, h.w, h.h, h.h * 0.5);
   ctx.fillStyle = THEME.glass;
@@ -155,7 +155,7 @@ function drawHopper(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx: Boar
   if (overflow) text(ctx, `+${sim.queue.length - max}`, labelX, cy, r * 0.9, THEME.textDim, { weight: 700 });
 }
 
-function drawCup(ctx: CanvasRenderingContext2D, sim: Sim, c: number, L: Layout, fx: BoardFx, dpr: number, hinted: boolean): void {
+function drawCup(ctx: CanvasRenderingContext2D, sim: MarbleSim, c: number, L: Layout, fx: BoardFx, dpr: number, hinted: boolean): void {
   const box = L.cup[c];
   const cup = sim.cups[c];
   const hex = hexOf(cup.color);
@@ -224,7 +224,7 @@ function drawCup(ctx: CanvasRenderingContext2D, sim: Sim, c: number, L: Layout, 
   ctx.restore();
 }
 
-function drawGate(ctx: CanvasRenderingContext2D, sim: Sim, g: number, L: Layout, fx: BoardFx, hinted: boolean): void {
+function drawGate(ctx: CanvasRenderingContext2D, sim: MarbleSim, g: number, L: Layout, fx: BoardFx, hinted: boolean): void {
   const ni = sim.gateNode[g];
   const n = sim.nodes[ni];
   const p = L.node[ni];
@@ -283,7 +283,7 @@ function drawGate(ctx: CanvasRenderingContext2D, sim: Sim, g: number, L: Layout,
   }
 }
 
-function drawMarbles(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, dpr: number, hintMarble: number, now: number): void {
+function drawMarbles(ctx: CanvasRenderingContext2D, sim: MarbleSim, L: Layout, dpr: number, hintMarble: number, now: number): void {
   for (const m of sim.marbles) {
     const pt = railAt(L.rail[m.to], m.d / m.len);
     if (m.id === hintMarble) {
@@ -339,7 +339,7 @@ function drawEffects(ctx: CanvasRenderingContext2D, fx: BoardFx): void {
 }
 
 /** The whole board. `hint` highlights a gate to tap, the marble it's for and that marble's cup. */
-export function drawBoard(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx: BoardFx, dpr: number, spawnT: number, hint: Advice | null): void {
+export function drawBoard(ctx: CanvasRenderingContext2D, sim: MarbleSim, L: Layout, fx: BoardFx, dpr: number, spawnT: number, hint: Advice | null): void {
   const P = L.panel;
   roundRect(ctx, P.x, P.y, P.w, P.h, L.colW * 0.06);
   ctx.fillStyle = THEME.panel;
@@ -357,7 +357,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, sim: Sim, L: Layout, fx
 }
 
 /** Spills used / allowed, as small sockets (filled red when used). */
-export function drawSpills(ctx: CanvasRenderingContext2D, sim: Sim, x: number, y: number, r: number): void {
+export function drawSpills(ctx: CanvasRenderingContext2D, sim: MarbleSim, x: number, y: number, r: number): void {
   const gap = r * 2.7;
   const x0 = x - ((sim.maxSpills - 1) * gap) / 2;
   for (let i = 0; i < sim.maxSpills; i++) {

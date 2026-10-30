@@ -5,6 +5,11 @@
   "orientation": "portrait",
   "description": "Marbles roll down a branching track; tap gates to send each marble to the cup of its colour. Spill three and the level is lost.",
   "scripts": {
-    "levels": "node games/marble-switchyard/tools/gen-levels.mjs 60"
+    "levels": "node games/marble-switchyard/tools/gen-levels.mjs 60",
+    "parity": "node games/marble-switchyard/tools/parity.mjs"
+  },
+  "wasm": {
+    "crate": "marble-switchyard-wasm",
+    "out": "src/wasm/marble_switchyard.wasm"
   }
 }

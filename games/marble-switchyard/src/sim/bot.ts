@@ -1,5 +1,5 @@
 import { Rng } from '@shared/engine/rng';
-import { HOPPER_DROP, Kind, Sim, type LevelData } from './sim';
+import { HOPPER_DROP, Kind, Sim, type LevelData, type MarbleSim } from './sim';
 
 /**
  * Simulated players. The planning bot proves levels are solvable (generator)
@@ -17,7 +17,7 @@ interface Step {
 }
 
 /** Gate decisions from the root down to each cup. */
-export function cupPaths(sim: Sim): Step[][] {
+export function cupPaths(sim: MarbleSim): Step[][] {
   return sim.cupNode.map((leaf) => {
     const steps: Step[] = [];
     let child = leaf;
@@ -64,7 +64,7 @@ export class Planner {
   private readonly paths: Step[][];
   private fl: Flying[] = [];
 
-  constructor(private readonly sim: Sim) {
+  constructor(private readonly sim: MarbleSim) {
     this.paths = cupPaths(sim);
   }
 

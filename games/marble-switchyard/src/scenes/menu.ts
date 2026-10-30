@@ -9,7 +9,7 @@ import { BoardFx } from '../game/fx';
 import { computeLayout, type Layout } from '../game/layout';
 import { drawBackground, drawBoard } from '../game/render';
 import { Planner } from '../sim/bot';
-import { EV, Sim } from '../sim/sim';
+import { EV, type MarbleSim } from '../sim/sim';
 
 /** Title screen over a quiet demo board that the planning bot plays on a loop. */
 export class MenuScene implements Scene {
@@ -17,7 +17,7 @@ export class MenuScene implements Scene {
   private W = 1;
   private H = 1;
   private t = 0;
-  private sim!: Sim;
+  private sim!: MarbleSim;
   private plan!: Planner;
   private L!: Layout;
   private fx = new BoardFx();
@@ -38,7 +38,7 @@ export class MenuScene implements Scene {
   }
 
   private newDemo(): void {
-    this.sim = new Sim(LEVELS[Math.min(LEVELS.length - 1, 14)]);
+    this.sim = this.app.newSim(LEVELS[Math.min(LEVELS.length - 1, 14)]);
     this.plan = new Planner(this.sim);
     this.fx.reset(this.sim);
     if (this.W > 1) this.L = computeLayout(this.W, this.H, this.sim);

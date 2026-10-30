@@ -1,0 +1,11 @@
+[package]
+name = "marble-switchyard-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WebAssembly C-ABI exports for Marble Switchyard"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+marble-switchyard = { path = "../marble-switchyard" }

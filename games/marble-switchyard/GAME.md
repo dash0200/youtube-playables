@@ -11,6 +11,9 @@ Send every marble to the cup of its colour. Three spills and the level is lost.
 ## Commands
 ```bash
 npm run dev -- marble-switchyard        # play locally (hot reload)
+npm run wasm -- marble-switchyard       # Rust → src/wasm/marble_switchyard.wasm (commit it)
+npm run parity -- marble-switchyard     # Rust sim vs TypeScript sim, must print all ✔
+npm run test:rust                       # cargo tests (rules)
 npm run levels -- marble-switchyard     # regenerate + bot-verify levels.json (TS generator via Vite SSR)
 node games/marble-switchyard/tools/debug-play.mjs <level> [attempt] [seed]   # trace a naive game
 npm run zip -- marble-switchyard        # build + validate + releases/*.zip
@@ -42,7 +45,9 @@ src/
 ├─ main.ts              boot, save/score, dev unlock + ?debug
 ├─ app.ts               App interface and SaveData
 ├─ sim/
-│  ├─ sim.ts            rules: tree, gates, marbles, cups, events (pure, deterministic, no screen sizes)
+│  ├─ sim.ts            MarbleSim interface + the TypeScript rules (fallback, and what the generator runs)
+│  ├─ wasm-sim.ts       WasmModule/WasmSim: the Rust sim in wasm, mirrored into MarbleSim fields each update
+│  ├─ index.ts          loadSimFactory(): wasm if src/wasm/*.wasm loads, else TS (App.newSim / simBackend)
 │  └─ bot.ts            Planner (planning bot: routes every marble in flight + the next 2 in the hopper,
 │                       predicts auto gates, respects links) and the naive policy; playBot / playNaive
 ├─ game/
@@ -53,13 +58,26 @@ src/
 │  ├─ render.ts         canvas drawing (¼-res bokeh background, rails, gates, cups, hopper, marbles)
 │  └─ sounds.ts         procedural ASMR sounds (drop, glassy clack, flipper click, cup plinks, spill thunk, chimes)
 ├─ scenes/              menu (bot-played demo board behind the title), levels (select), play
+├─ wasm/marble_switchyard.wasm  build output of `npm run wasm` (committed)
 └─ tools/generate.ts    offline level generator (not bundled)
 tools/gen-levels.mjs    runs the generator through Vite SSR → src/game/levels.json
+tools/parity.mjs        Rust ↔ TS checksum comparison (cargo `ms-trace` vs sim.ts)
+
+rust/crates/
+├─ marble-switchyard/        no_std, no alloc: sim.rs (same rules, SoA state, checksum) + tests
+├─ marble-switchyard-wasm/   C-ABI exports (ms_*) over 4 static sim slots → wasm32-unknown-unknown
+└─ marble-switchyard-tools/  native std: ms-trace (parity)
 tools/debug-play.mjs    tuning aid: replays a candidate with the naive player, printing taps and spills
 ```
-Unlike Bead Loop there is no Rust/WebAssembly sim: a level has at most a dozen
-marbles and 5 gates, so the TypeScript sim is far below a millisecond per frame,
-and the same code runs in the game and in the generator (no parity to keep).
+The game runs the **Rust sim in WebAssembly** (`rust/crates/marble-switchyard`, 12.8 KiB
+.wasm, committed). `sim.ts` is the step-for-step TypeScript copy: the fallback when
+wasm can't load, and what the level generator and bots run in Node. Rule changes go
+into both, then `npm run test:rust` → `npm run parity -- marble-switchyard` →
+`npm run wasm -- marble-switchyard`. Wasm details: 4 static sim slots handed out
+round-robin (`WasmModule.create`; at most two sims live at once: the scene fading out
+and the one fading in); input buffer `[tree_len, tree[32], n_gates, (start, auto,
+link) x 8, n_cups, (color, cap) x 8, seq_len lo/hi, seq[128]]`; checksums hash floats
+as floor(x * 1e6) so both sides agree exactly.
 
 ## Fast-forward
 A **2×** button (next to Back) runs the whole sim at double speed (`FAST_SPEED` in
@@ -117,4 +135,5 @@ and a faint "marbles still needed" count. Original art, names and sounds.
   (`Planner.advise()` already gives the move; the tutorial uses it).
 - More mechanics for variety later: one-way gates, cups that accept two colours,
   timed gates, marble "trains".
-- Rust port only if the sim ever gets heavy (not needed now).
+- Port the generator and bots to native Rust tools if generation ever gets slow
+  (it runs the TS sim in Node today, ~2 min for 60 levels).

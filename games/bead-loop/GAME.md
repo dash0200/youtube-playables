@@ -26,7 +26,8 @@ toolchain can't link native code (Git Bash's `link` also shadows MSVC's). Use th
 GNU toolchain from PowerShell for any cargo step, including the npm scripts:
 `$env:RUSTUP_TOOLCHAIN='1.97.0-x86_64-pc-windows-gnu'; $env:CARGO_TARGET_DIR="$PWD\rust\target\gnu"`.
 ust	arget\gnu"`.
-`npm run wasm` additionally needs `rustup +1.97.0-x86_64-pc-windows-gnu target add wasm32-unknown-unknown`.
+`npm run wasm`/`build` pick that GNU toolchain automatically when the MSVC one fails
+(it needs the wasm target: `rustup +1.97.0-x86_64-pc-windows-gnu target add wasm32-unknown-unknown`).
 Dev helpers: **P** simulates YouTube pause/resume. Add `?debug` to the URL to
 expose `window.__beadLoop` (the App, including `sim.s` state) for automated
 play-tests. Save data lives in `localStorage["ytp-save:bead-loop"]` outside YouTube.
@@ -231,7 +232,7 @@ names or branding from the reference game.
 - [x] Only Playables save API; loadData before saveData
 - [x] No master mute; follows YouTube audio state
 - [x] Relative paths, wasm served from the bundle (no network), system fonts
-- [ ] Commit a built `src/wasm/bead_loop.wasm` before release (otherwise the TS fallback runs)
+- [x] Built `src/wasm/bead_loop.wasm` committed (22.9 KiB): builds and the Vercel demo run the Rust sim
 - [ ] Run the official Playables test suite
 
 ## Backlog

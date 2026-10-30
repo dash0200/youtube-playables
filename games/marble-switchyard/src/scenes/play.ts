@@ -12,7 +12,7 @@ import { computeLayout, type Layout } from '../game/layout';
 import { drawBackground, drawBoard, drawSpills } from '../game/render';
 import { MarbleSounds } from '../game/sounds';
 import { Planner, type Advice } from '../sim/bot';
-import { EV, Sim } from '../sim/sim';
+import { EV, type MarbleSim } from '../sim/sim';
 
 type Result = 'none' | 'win' | 'lose';
 const hex = (c: number): string => PALETTE[c].hex;
@@ -24,7 +24,7 @@ const FAST_SPEED = 2;
 const TUTORIAL_LEVELS = 2;
 
 export class PlayScene implements Scene {
-  private readonly sim: Sim;
+  private readonly sim: MarbleSim;
   private readonly plan: Planner;
   private L!: Layout;
   private fx = new BoardFx();
@@ -52,7 +52,7 @@ export class PlayScene implements Scene {
   private autoT = 0;
 
   constructor(private readonly app: App, private readonly levelNum: number) {
-    this.sim = new Sim(getLevel(levelNum));
+    this.sim = app.newSim(getLevel(levelNum));
     this.plan = new Planner(this.sim);
     this.fx.reset(this.sim);
     this.sounds = new MarbleSounds(app.sfx);

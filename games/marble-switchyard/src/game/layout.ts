@@ -1,5 +1,5 @@
 import { clamp } from '@shared/engine/math';
-import { HOPPER_DROP, Kind, type Sim } from '../sim/sim';
+import { HOPPER_DROP, Kind, type MarbleSim } from '../sim/sim';
 
 export interface Pt {
   x: number;
@@ -62,7 +62,7 @@ export function railAt(r: Rail, t: number): Pt {
  * hopper tray, the track (one row per tree level) and the cups along the
  * bottom. Marble size comes from the cup spacing, then rows share what's left.
  */
-export function computeLayout(W: number, H: number, sim: Sim): Layout {
+export function computeLayout(W: number, H: number, sim: MarbleSim): Layout {
   const colW = Math.min(W, H * 0.62);
   const colX = (W - colW) / 2;
   const btn = clamp(colW * 0.11, 38, 54);

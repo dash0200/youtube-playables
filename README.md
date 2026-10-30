@@ -12,12 +12,14 @@ engine and shared assets.
 ```bash
 npm install
 rustup target add wasm32-unknown-unknown   # once (Rust from https://rustup.rs)
-npm run wasm -- bead-loop      # build the Rust/WebAssembly simulation
+npm run wasm -- bead-loop      # rebuild a game's Rust/WebAssembly simulation (committed already)
 npm run dev -- bead-loop       # play locally
 npm run zip -- bead-loop       # releases/bead-loop-<version>.zip → upload to Playables
 ```
-Game rules are written in Rust (`rust/`) and compiled to WebAssembly. A TypeScript
-mirror runs if the .wasm hasn't been built yet.
+Every game's rules are written in Rust (`rust/`) and compiled to WebAssembly; the
+built `.wasm` is committed, so builds and the Vercel demos ship it even without Rust
+installed. Each game keeps a TypeScript copy of its rules (checked identical by
+`npm run parity`) as a fallback.
 
 ## Add a new game
 ```bash

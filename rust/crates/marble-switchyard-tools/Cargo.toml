@@ -1,0 +1,15 @@
+[package]
+name = "marble-switchyard-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Native tools for Marble Switchyard: Rust <-> TypeScript parity trace"
+publish = false
+
+[[bin]]
+name = "ms-trace"
+path = "src/bin/trace.rs"
+
+[dependencies]
+marble-switchyard = { path = "../marble-switchyard" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

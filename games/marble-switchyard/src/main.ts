@@ -10,6 +10,7 @@ import { drawBackground } from './game/render';
 import { MenuScene } from './scenes/menu';
 import { LevelSelectScene } from './scenes/levels';
 import { PlayScene } from './scenes/play';
+import { loadSimFactory, type SimFactory } from './sim';
 
 const save = new SaveStore<SaveData>(defaultSave, 1);
 let app: App;
@@ -42,8 +43,8 @@ void bootPlayable({
   },
 
   async load(core) {
-    const [icons] = await Promise.all([loadIcons(), save.load()]);
-    app = createApp(core, icons);
+    const [icons, , sims] = await Promise.all([loadIcons(), save.load(), loadSimFactory()]);
+    app = createApp(core, icons, sims);
     // Test hook for automated play-testing; dev server only, with ?debug in the URL.
     if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) (window as unknown as { __marbles: App }).__marbles = app;
     // Keep YouTube's best score in sync with the save (certification rule).
@@ -62,11 +63,13 @@ void bootPlayable({
   },
 });
 
-function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[0], icons: Icons): App {
+function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[0], icons: Icons, sims: SimFactory): App {
   const a: App = {
     ...core,
     save,
     icons,
+    simBackend: sims.backend,
+    newSim: (level) => sims.create(level),
     goMenu: () => core.scenes.go(new MenuScene(a)),
     goLevels: () => core.scenes.go(new LevelSelectScene(a)),
     play: (n) => core.scenes.go(new PlayScene(a, Math.max(1, Math.min(MAX_LEVEL, n)))),

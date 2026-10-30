@@ -1,6 +1,7 @@
 import type { Core } from '@shared/boot';
 import type { SaveStore } from '@shared/save/save-store';
 import type { Icons } from '@shared/ui/icons';
+import type { LevelData, MarbleSim } from './sim/sim';
 
 export interface SaveData {
   /** Highest level the player may start (1-based). */
@@ -21,6 +22,10 @@ export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [],
 export interface App extends Core {
   save: SaveStore<SaveData>;
   icons: Icons;
+  /** Which simulation runs: the Rust port in WebAssembly, or the TypeScript fallback. */
+  simBackend: 'wasm' | 'ts';
+  /** A fresh simulation for a level (wasm when available). */
+  newSim(level: LevelData): MarbleSim;
   goMenu(): void;
   goLevels(): void;
   play(level: number): void;

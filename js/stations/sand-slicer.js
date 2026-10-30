@@ -250,6 +250,7 @@ class SandSlicerStation {
     const h = this.height;
     const originX = (w - this.gridWidth) / 2;
     const originY = (h - this.gridHeight) / 2 - 20;
+    const theme = this.themes[this.currentThemeIndex];
 
     ctx.clearRect(0, 0, w, h);
 

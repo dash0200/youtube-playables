@@ -213,3 +213,4 @@ class RustWasmBridge {
 }
 
 window.wasmBridge = new RustWasmBridge();
+

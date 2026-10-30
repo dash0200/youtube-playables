@@ -1,0 +1,22 @@
+{
+  "name": "youtube-playables",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Monorepo of YouTube Playables web games (Vite + TypeScript, shared engine and assets).",
+  "scripts": {
+    "dev": "node scripts/game.mjs dev",
+    "build": "node scripts/game.mjs build",
+    "build:all": "node scripts/game.mjs build-all",
+    "preview": "node scripts/game.mjs preview",
+    "zip": "node scripts/game.mjs zip",
+    "new-game": "node scripts/game.mjs new",
+    "list": "node scripts/game.mjs list",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

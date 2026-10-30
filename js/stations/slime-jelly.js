@@ -69,13 +69,19 @@ class SlimeJellyStation {
     this.center.set(this.width / 2, this.height / 2 + 10);
     this.nodes = [];
 
-    for (let i = 0; i < this.nodeCount; i++) {
-      const angle = (i / this.nodeCount) * Math.PI * 2;
-      const x = this.center.x + Math.cos(angle) * this.radius;
-      const y = this.center.y + Math.sin(angle) * this.radius;
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      this.nodeCount = 48;
+      window.wasmBridge.initJelly(this.center.x, this.center.y, this.radius, this.nodeCount);
+    } else {
+      this.nodeCount = 28;
+      for (let i = 0; i < this.nodeCount; i++) {
+        const angle = (i / this.nodeCount) * Math.PI * 2;
+        const x = this.center.x + Math.cos(angle) * this.radius;
+        const y = this.center.y + Math.sin(angle) * this.radius;
 
-      // Spring node with soft stiffness and nice wobble damping
-      this.nodes.push(new SpringPoint(x, y, 1.2, 0.075, 0.88));
+        // Spring node with soft stiffness and nice wobble damping
+        this.nodes.push(new SpringPoint(x, y, 1.2, 0.075, 0.88));
+      }
     }
 
     // Initialize floating toppings inside slime
@@ -145,13 +151,17 @@ class SlimeJellyStation {
       maxR: 70
     });
 
-    // Deform spring nodes
-    for (let node of this.nodes) {
-      const d = node.pos.dist(touchPoint);
-      if (d < 120) {
-        const forceMag = (1 - d / 120) * 45 * intensity;
-        const pushAngle = Math.atan2(node.pos.y - py, node.pos.x - px);
-        node.applyForce(Math.cos(pushAngle) * forceMag, Math.sin(pushAngle) * forceMag);
+    // Deform spring nodes in Rust WASM or JS
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      window.wasmBridge.pokeJelly(px, py, 45 * intensity, 120);
+    } else {
+      for (let node of this.nodes) {
+        const d = node.pos.dist(touchPoint);
+        if (d < 120) {
+          const forceMag = (1 - d / 120) * 45 * intensity;
+          const pushAngle = Math.atan2(node.pos.y - py, node.pos.x - px);
+          node.applyForce(Math.cos(pushAngle) * forceMag, Math.sin(pushAngle) * forceMag);
+        }
       }
     }
 
@@ -169,23 +179,26 @@ class SlimeJellyStation {
   update() {
     this.center.set(this.width / 2, this.height / 2 + 10);
 
-    // Update spring nodes
-    for (let node of this.nodes) {
-      node.update();
-    }
+    // Update soft-body jelly nodes in Rust WASM or JS
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      window.wasmBridge.updateJelly(this.center.x, this.center.y, 0.075, 0.88, 0.05);
+    } else {
+      for (let node of this.nodes) {
+        node.update();
+      }
 
-    // Neighbor tension constraints to keep the slime organic & elastic
-    for (let i = 0; i < this.nodes.length; i++) {
-      const prev = this.nodes[(i - 1 + this.nodes.length) % this.nodes.length];
-      const curr = this.nodes[i];
-      const next = this.nodes[(i + 1) % this.nodes.length];
+      // Neighbor tension constraints to keep the slime organic & elastic
+      for (let i = 0; i < this.nodes.length; i++) {
+        const prev = this.nodes[(i - 1 + this.nodes.length) % this.nodes.length];
+        const curr = this.nodes[i];
+        const next = this.nodes[(i + 1) % this.nodes.length];
 
-      // Pull slightly towards neighbor midpoint for curvature smoothness
-      const midX = (prev.pos.x + next.pos.x) / 2;
-      const midY = (prev.pos.y + next.pos.y) / 2;
+        const midX = (prev.pos.x + next.pos.x) / 2;
+        const midY = (prev.pos.y + next.pos.y) / 2;
 
-      curr.vel.x += (midX - curr.pos.x) * 0.05;
-      curr.vel.y += (midY - curr.pos.y) * 0.05;
+        curr.vel.x += (midX - curr.pos.x) * 0.05;
+        curr.vel.y += (midY - curr.pos.y) * 0.05;
+      }
     }
 
     // Update internal floating toppings
@@ -306,19 +319,28 @@ class SlimeJellyStation {
 
   _drawSlimePath(ctx) {
     ctx.beginPath();
-    const len = this.nodes.length;
+    let nodes;
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      nodes = window.wasmBridge.getJellyNodes();
+    } else {
+      nodes = this.nodes.map((n) => n.pos);
+    }
+
+    const len = nodes.length;
+    if (len === 0) return;
+
     for (let i = 0; i < len; i++) {
-      const curr = this.nodes[i];
-      const next = this.nodes[(i + 1) % len];
+      const curr = nodes[i];
+      const next = nodes[(i + 1) % len];
 
       // Midpoint Bezier smoothing
-      const midX = (curr.pos.x + next.pos.x) / 2;
-      const midY = (curr.pos.y + next.pos.y) / 2;
+      const midX = (curr.x + next.x) / 2;
+      const midY = (curr.y + next.y) / 2;
 
       if (i === 0) {
         ctx.moveTo(midX, midY);
       } else {
-        ctx.quadraticCurveTo(curr.pos.x, curr.pos.y, midX, midY);
+        ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
       }
     }
     ctx.closePath();

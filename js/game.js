@@ -64,6 +64,18 @@ class ASMRZenLabGame {
     // Load saved progression
     await this.loadProgression();
 
+    // When Rust WASM finishes compiling and loading, upgrade active station to high-density WASM physics
+    const checkWasm = setInterval(() => {
+      if (window.wasmBridge && window.wasmBridge.isReady) {
+        clearInterval(checkWasm);
+        if (this.activeStation && typeof this.activeStation.initGrid === 'function') {
+          this.activeStation.initGrid();
+        } else if (this.activeStation && typeof this.activeStation.initSlime === 'function') {
+          this.activeStation.initSlime();
+        }
+      }
+    }, 50);
+
     // Mark Game as fully ready for YouTube Playables
     if (window.ytSDK) {
       window.ytSDK.gameReady();

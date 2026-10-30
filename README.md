@@ -6,14 +6,14 @@
 
 ## 🌟 Features & ASMR Stations
 
-### 1. 🔪 Kinetic Sand & Soap Slicer 3D
+### 1. 🔪 Kinetic Sand & Soap Slicer 3D (Rust WebAssembly Accelerated)
+- **Rust WASM Engine:** Real-time high-density grid (616 micro-voxels) and up to 2,000 simultaneous tumbling physics particles calculated in Rust with zero garbage-collection overhead.
 - **Visuals:** 2.5D layered blocks of kinetic sand, honeycomb soap, galaxy cake, and matcha cream. Interactive blade dynamically tilts with swipe angle, casting soft drop shadows.
-- **Physics:** Sliced voxels detach into physics particles that tumble, bounce, and settle.
 - **Audio:** High-frequency crispy micro-crackles and shaving friction with binaural stereo panning based on horizontal slice position.
 
-### 2. 🍑 Squishy Jelly & Slime Lab
-- **Visuals:** Organic soft-body spring mesh with Bezier curve smoothing, specular wet highlights, translucent gradient depth, and floating internal toppings (peaches, glitter, stars).
-- **Physics:** Spring-damper perimeter nodes deform under finger/cursor pressure, creating realistic wobble, stretch, and inertia.
+### 2. 🍑 Squishy Jelly & Slime Lab (Rust WebAssembly Accelerated)
+- **Rust WASM Engine:** 48 spring-damper nodes computed in Rust via Hooke's law and neighbor curvature tension for hyper-organic squishiness.
+- **Visuals:** Organic soft-body mesh with cubic Bezier curves, specular wet highlights, translucent gradient depth, and floating internal toppings (peaches, glitter, stars).
 - **Audio:** Bubbly FM-synthesized squelch and plop sounds, with micro-bubble bursts on stretch and release.
 
 ### 3. 💖 Mega Silicone Pop-It & Infinite Bubble Wrap

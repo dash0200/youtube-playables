@@ -68,25 +68,43 @@ class SandSlicerStation {
     this.voxels = [];
     this.particles = [];
     const theme = this.themes[this.currentThemeIndex];
+    const originX = (this.width - this.gridWidth) / 2;
+    const originY = (this.height - this.gridHeight) / 2 - 20;
 
-    const cellW = this.gridWidth / this.cols;
-    const cellH = this.gridHeight / this.rows;
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      this.cols = 28;
+      this.rows = 22;
+      window.wasmBridge.initSandGrid(
+        originX,
+        originY,
+        this.gridWidth,
+        this.gridHeight,
+        this.cols,
+        this.rows,
+        theme.colors.length
+      );
+    } else {
+      this.cols = 16;
+      this.rows = 14;
+      const cellW = this.gridWidth / this.cols;
+      const cellH = this.gridHeight / this.rows;
 
-    for (let r = 0; r < this.rows; r++) {
-      const colorIndex = Math.floor((r / this.rows) * theme.colors.length);
-      const color = theme.colors[colorIndex];
+      for (let r = 0; r < this.rows; r++) {
+        const colorIndex = Math.floor((r / this.rows) * theme.colors.length);
+        const color = theme.colors[colorIndex];
 
-      for (let c = 0; c < this.cols; c++) {
-        this.voxels.push({
-          col: c,
-          row: r,
-          w: cellW,
-          h: cellH,
-          color: color,
-          sliced: false,
-          depth: 18 - (r / this.rows) * 6, // 2.5D bevel depth
-          sparkle: Math.random() > 0.8
-        });
+        for (let c = 0; c < this.cols; c++) {
+          this.voxels.push({
+            col: c,
+            row: r,
+            w: cellW,
+            h: cellH,
+            color: color,
+            sliced: false,
+            depth: 18 - (r / this.rows) * 6, // 2.5D bevel depth
+            sparkle: Math.random() > 0.8
+          });
+        }
       }
     }
   }
@@ -139,39 +157,44 @@ class SandSlicerStation {
     const originY = (this.height - this.gridHeight) / 2 - 20;
     const theme = this.themes[this.currentThemeIndex];
     let slicedThisStep = 0;
-
     const sliceRadius = 18;
 
-    for (let i = 0; i < this.voxels.length; i++) {
-      const v = this.voxels[i];
-      if (v.sliced) continue;
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      const shapeType = theme.particleShape === 'shard' ? 1 : (theme.particleShape === 'sparkle' ? 2 : 0);
+      const floorY = originY + this.gridHeight + 110;
+      slicedThisStep = window.wasmBridge.sliceVoxels(px, py, sliceRadius, 3, shapeType, floorY);
+    } else {
+      for (let i = 0; i < this.voxels.length; i++) {
+        const v = this.voxels[i];
+        if (v.sliced) continue;
 
-      const vx = originX + v.col * v.w + v.w / 2;
-      const vy = originY + v.row * v.h + v.h / 2;
+        const vx = originX + v.col * v.w + v.w / 2;
+        const vy = originY + v.row * v.h + v.h / 2;
 
-      const dx = px - vx;
-      const dy = py - vy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+        const dx = px - vx;
+        const dy = py - vy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < sliceRadius) {
-        v.sliced = true;
-        slicedThisStep++;
+        if (dist < sliceRadius) {
+          v.sliced = true;
+          slicedThisStep++;
 
-        // Spawn tumbling physics crumb particles
-        const particleCount = theme.type === 'soap' ? 3 : 5;
-        for (let p = 0; p < particleCount; p++) {
-          this.particles.push(
-            new Particle(vx, vy, {
-              vx: (Math.random() - 0.5) * 5 + (px - vx) * 0.1,
-              vy: -Math.random() * 4 - 1,
-              size: Math.random() * 7 + 4,
-              color: v.color,
-              gravity: 0.35,
-              decay: 0.012,
-              shape: theme.particleShape,
-              floorY: originY + this.gridHeight + 110
-            })
-          );
+          // Spawn tumbling physics crumb particles
+          const particleCount = theme.type === 'soap' ? 3 : 5;
+          for (let p = 0; p < particleCount; p++) {
+            this.particles.push(
+              new Particle(vx, vy, {
+                vx: (Math.random() - 0.5) * 5 + (px - vx) * 0.1,
+                vy: -Math.random() * 4 - 1,
+                size: Math.random() * 7 + 4,
+                color: v.color,
+                gravity: 0.35,
+                decay: 0.012,
+                shape: theme.particleShape,
+                floorY: originY + this.gridHeight + 110
+              })
+            );
+          }
         }
       }
     }
@@ -201,11 +224,17 @@ class SandSlicerStation {
     while (diff > Math.PI) diff -= Math.PI * 2;
     this.bladeAngle += diff * 0.25;
 
-    // Update particles
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const alive = this.particles[i].update();
-      if (!alive) {
-        this.particles.splice(i, 1);
+    // Update particles in Rust WASM or JS
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      const originY = (this.height - this.gridHeight) / 2 - 20;
+      const floorY = originY + this.gridHeight + 110;
+      window.wasmBridge.updateParticles(0.35, 0.98, 0.45, floorY, 0.012);
+    } else {
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+        const alive = this.particles[i].update();
+        if (!alive) {
+          this.particles.splice(i, 1);
+        }
       }
     }
 
@@ -228,39 +257,47 @@ class SandSlicerStation {
     this._drawCuttingBoard(originX, originY);
 
     // 2. Draw Voxels with 2.5D bevel depth
-    for (let i = 0; i < this.voxels.length; i++) {
-      const v = this.voxels[i];
-      if (v.sliced) continue;
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      window.wasmBridge.renderVoxels(ctx, theme.colors);
+    } else {
+      for (let i = 0; i < this.voxels.length; i++) {
+        const v = this.voxels[i];
+        if (v.sliced) continue;
 
-      const vx = originX + v.col * v.w;
-      const vy = originY + v.row * v.h;
+        const vx = originX + v.col * v.w;
+        const vy = originY + v.row * v.h;
 
-      // Drop shadow per block
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-      ctx.fillRect(vx + 2, vy + 3, v.w, v.h);
+        // Drop shadow per block
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+        ctx.fillRect(vx + 2, vy + 3, v.w, v.h);
 
-      // Main Voxel Face
-      ctx.fillStyle = v.color;
-      ctx.fillRect(vx, vy, v.w - 0.5, v.h - 0.5);
+        // Main Voxel Face
+        ctx.fillStyle = v.color;
+        ctx.fillRect(vx, vy, v.w - 0.5, v.h - 0.5);
 
-      // 3D Top bevel highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-      ctx.fillRect(vx, vy, v.w - 0.5, 2.5);
+        // 3D Top bevel highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.fillRect(vx, vy, v.w - 0.5, 2.5);
 
-      // 3D Right shade
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-      ctx.fillRect(vx + v.w - 2.5, vy, 2.5, v.h - 0.5);
+        // 3D Right shade
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.fillRect(vx + v.w - 2.5, vy, 2.5, v.h - 0.5);
 
-      // Sparkle glint
-      if (v.sparkle) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.fillRect(vx + v.w * 0.3, vy + v.h * 0.3, 2, 2);
+        // Sparkle glint
+        if (v.sparkle) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.fillRect(vx + v.w * 0.3, vy + v.h * 0.3, 2, 2);
+        }
       }
     }
 
     // 3. Draw Crumb & Sand Particles
-    for (let p of this.particles) {
-      p.draw(ctx);
+    if (window.wasmBridge && window.wasmBridge.isReady) {
+      window.wasmBridge.renderParticles(ctx, theme.colors);
+    } else {
+      for (let p of this.particles) {
+        p.draw(ctx);
+      }
     }
 
     // 4. Draw Cutting Blade / Knife

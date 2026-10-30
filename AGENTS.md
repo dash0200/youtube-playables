@@ -101,6 +101,28 @@ npm run test:rust                 # cargo test for the whole workspace
 - The SDK does nothing locally. Run the official Playables test suite before release.
 - Docs: https://developers.google.com/youtube/gaming/playables
 
+## Web demos on Vercel (one project per game)
+Each game is its own Vercel project, linked to this GitHub repo (`main` = production),
+so every game has its own public link (e.g. `bead-loop.vercel.app`). Project settings
+(Settings → Build and Deployment, or `vercel api /v9/projects/<project> --method PATCH`):
+
+| Setting | Value |
+|---|---|
+| Framework | Other (none) |
+| Root directory | repo root (empty) |
+| Install command | `npm install` |
+| Build command | `npm run build -- <game-id>` |
+| Output directory | `dist/<game-id>` |
+| Ignored build step | `git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- games/<game-id> shared scripts package.json package-lock.json vite.config.ts tsconfig.json` |
+
+The ignored build step makes a push rebuild only the games whose own folder or shared
+code changed (exit 0 = skip, 1 = build; a missing previous commit also builds).
+The Rust → wasm step can't run on Vercel; the build warns and uses the committed
+`.wasm` or the TypeScript fallback. Deploying a folder of this repo with the Vercel CLI
+links the project to the GitHub repo automatically, so set these settings right away or
+the next push deploys the repo root (a 404). Production URLs are public; preview URLs
+are behind Vercel login.
+
 ## Content
 Games may borrow *mechanics* from existing games, but art, names, characters,
 text and branding must be original.

@@ -6,6 +6,7 @@ engine and shared assets.
 | Game | Folder | Docs |
 |---|---|---|
 | Bead Loop | `games/bead-loop` | [GAME.md](games/bead-loop/GAME.md) |
+| Marble Switchyard | `games/marble-switchyard` | [GAME.md](games/marble-switchyard/GAME.md) |
 
 ## Quick start
 ```bash

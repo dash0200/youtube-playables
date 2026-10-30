@@ -195,7 +195,7 @@ class ASMRZenLabGame {
           else if (this.activeStation.nextItem) this.activeStation.nextItem();
           else if (this.activeStation.toggleAutoDrop) {
             const state = this.activeStation.toggleAutoDrop();
-            btnVariant.textContent = state ? 'Auto Drop: ON' : 'Auto Drop: OFF';
+            btnVariant.textContent = state ? '💧 Auto Drop: ON' : '💧 Auto Drop: OFF';
           }
         }
         if (window.audioEngine) {
@@ -254,7 +254,8 @@ class ASMRZenLabGame {
     } else if (this.currentStationIndex === 3) {
       btnVariant.textContent = '💥 Change Item';
     } else if (this.currentStationIndex === 4) {
-      btnVariant.textContent = '💧 Auto Marbles: ON';
+      const isAuto = this.activeStation ? this.activeStation.autoDrop : true;
+      btnVariant.textContent = isAuto ? '💧 Auto Drop: ON' : '💧 Auto Drop: OFF';
     }
   }
 

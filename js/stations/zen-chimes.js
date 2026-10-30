@@ -2,6 +2,7 @@
  * Station 5: Zen Pentatonic Chime Spiral & Glass Marbles
  * Mesmerizing physics marble dropper bouncing across tuned acoustic chime bars,
  * emitting pure pentatonic harmonic chimes with binaural stereo panning.
+ * Features exact rigid-body surface contact physics and guaranteed cascading trajectory.
  */
 
 class ZenChimesStation {
@@ -14,7 +15,7 @@ class ZenChimesStation {
     this.rings = [];
     this.autoDrop = true;
     this.lastDropTime = 0;
-    this.dropInterval = 900; // ms
+    this.dropInterval = 1400; // ms (relaxed cadence for melodic appreciation)
 
     this.initChimes();
   }
@@ -36,28 +37,47 @@ class ZenChimesStation {
     const h = this.height;
     const cx = w / 2;
 
-    // 8 Tuned Chime Bars arranged in a cascading acoustic path
+    // Dynamically calculate vertical spacing and sizes based on screen height
+    const numBars = 6;
+    const availH = h - 160;
+    const gapY = Math.min(76, Math.max(54, availH / (numBars + 0.8)));
+    const startY = Math.max(105, (h - gapY * numBars) / 2 - 15);
+
+    // Dynamic bar length and lateral shift to guarantee flawless zig-zag overlap
+    const barLength = Math.min(180, Math.max(140, w * 0.42));
+    const shiftX = Math.min(45, w * 0.11);
+    const angle = 0.27; // ~15.5 degrees inclination
+
+    // 6 Tuned Pentatonic Bars (C4, D4, E4, G4, A4, C5)
     const notesData = [
-      { x: cx - 90, y: 150, length: 110, angle: 0.22, note: 0, color: '#FFB5A7' },
-      { x: cx + 80, y: 220, length: 100, angle: -0.25, note: 1, color: '#FCD5CE' },
-      { x: cx - 80, y: 290, length: 95, angle: 0.24, note: 2, color: '#F8EDEB' },
-      { x: cx + 70, y: 360, length: 90, angle: -0.22, note: 3, color: '#D8E2DC' },
-      { x: cx - 60, y: 430, length: 85, angle: 0.20, note: 4, color: '#ECE4DB' },
-      { x: cx + 50, y: 500, length: 80, angle: -0.18, note: 5, color: '#FFE5D9' }
+      { name: 'C4', note: 0, color: '#FFB5A7', shift: -shiftX, angle: angle },
+      { name: 'D4', note: 1, color: '#FCD5CE', shift: shiftX, angle: -angle },
+      { name: 'E4', note: 2, color: '#B5E48C', shift: -shiftX, angle: angle },
+      { name: 'G4', note: 3, color: '#90E0EF', shift: shiftX, angle: -angle },
+      { name: 'A4', note: 4, color: '#CDB4DB', shift: -shiftX, angle: angle },
+      { name: 'C5', note: 5, color: '#FFE5D9', shift: shiftX * 0.7, angle: -angle * 0.9 }
     ];
 
-    for (let d of notesData) {
+    for (let i = 0; i < notesData.length; i++) {
+      const d = notesData[i];
+      const cy = startY + i * gapY;
       this.chimes.push({
-        x: d.x,
-        y: d.y,
-        length: d.length,
+        id: i,
+        name: d.name,
+        x: cx + d.shift,
+        y: cy,
+        length: barLength,
         angle: d.angle,
         note: d.note,
         color: d.color,
         glow: 0,
-        width: 14
+        width: 16
       });
     }
+
+    // Top drop chute coordinates
+    this.chuteX = this.chimes[0].x - (barLength * 0.38) * Math.cos(angle);
+    this.chuteY = startY - 45;
   }
 
   reset() {
@@ -70,26 +90,42 @@ class ZenChimesStation {
     return this.autoDrop;
   }
 
-  dropMarble(x = null, y = 60) {
-    const cx = this.width / 2;
-    const spawnX = x !== null ? x : cx + (Math.random() - 0.5) * 40;
+  dropMarble(x = null, y = null) {
+    let spawnX = x;
+    let spawnY = y;
+
+    if (spawnX === null || spawnY === null) {
+      // Auto drop from the top wooden dispenser
+      spawnX = this.chuteX + (Math.random() - 0.5) * 8;
+      spawnY = this.chuteY;
+    }
+
+    const marbleColors = [
+      '#FFD166', // Golden amber
+      '#06D6A0', // Jade glass
+      '#118AB2', // Ocean sapphire
+      '#EF476F', // Rose quartz
+      '#E0AAFF'  // Lavender amethyst
+    ];
 
     this.marbles.push({
       x: spawnX,
-      y: y,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: 1.2,
-      r: 10,
-      color: Math.random() > 0.4 ? '#FFD700' : '#A7F3D0',
-      isGlass: Math.random() > 0.5
+      y: spawnY,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: 1.0,
+      r: 9.5,
+      color: marbleColors[Math.floor(Math.random() * marbleColors.length)],
+      alpha: 1.0,
+      inTray: false,
+      lastHitBarId: -1,
+      cooldown: 0
     });
 
     if (window.audioEngine) {
-      // Soft spawn click
       window.audioEngine._playSubClick(
         window.audioEngine.ctx ? window.audioEngine.ctx.currentTime : 0,
         window.audioEngine.getPanning(spawnX),
-        440
+        480
       );
     }
   }
@@ -97,7 +133,7 @@ class ZenChimesStation {
   onPointerDown(x, y) {
     this.dropMarble(x, y);
     if (window.triggerHaptic) {
-      window.triggerHaptic(10);
+      window.triggerHaptic(12);
     }
   }
 
@@ -112,76 +148,133 @@ class ZenChimesStation {
       this.lastDropTime = now;
     }
 
-    const gravity = 0.32;
-    const floorY = this.height - 40;
+    const gravity = 0.34;
+    const trayY = this.height - 48;
+    const cx = this.width / 2;
 
-    // Update Marbles & Chime Collisions
+    // Update Marbles with True Surface-Contact Physics
     for (let i = this.marbles.length - 1; i >= 0; i--) {
       const m = this.marbles[i];
-      m.vy += gravity;
-      m.x += m.vx;
-      m.y += m.vy;
 
-      // Check collision against each chime bar line segment
-      for (let ch of this.chimes) {
-        const halfL = ch.length / 2;
-        const cosA = Math.cos(ch.angle);
-        const sinA = Math.sin(ch.angle);
+      // Decrease cooldown between collision sounds
+      if (m.cooldown > 0) m.cooldown--;
 
-        const x1 = ch.x - cosA * halfL;
-        const y1 = ch.y - sinA * halfL;
-        const x2 = ch.x + cosA * halfL;
-        const y2 = ch.y + sinA * halfL;
+      if (!m.inTray) {
+        // Free-fall acceleration
+        m.vy += gravity;
+        m.x += m.vx;
+        m.y += m.vy;
 
-        // Line-circle distance
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const l2 = dx * dx + dy * dy;
-        const t = Math.max(0, Math.min(1, ((m.x - x1) * dx + (m.y - y1) * dy) / l2));
-        const projX = x1 + t * dx;
-        const projY = y1 + t * dy;
+        // Check collision against tuned chime bars
+        for (let ch of this.chimes) {
+          const halfL = ch.length / 2;
+          const halfW = ch.width / 2;
+          const cosA = Math.cos(ch.angle);
+          const sinA = Math.sin(ch.angle);
 
-        const dist = Math.sqrt((m.x - projX) ** 2 + (m.y - projY) ** 2);
+          // Vector from chime bar center to marble center
+          const dx = m.x - ch.x;
+          const dy = m.y - ch.y;
 
-        if (dist < m.r + ch.width / 2 && m.vy > 0) {
-          // Collision hit!
-          ch.glow = 1.0;
+          // Tangent distance along bar (from -halfL to +halfL)
+          const s = dx * cosA + dy * sinA;
 
-          // Sound trigger
-          if (window.audioEngine) {
-            window.audioEngine.playChime(ch.note, m.x);
+          // Normal distance towards top surface (positive when above top surface)
+          // Unit normal pointing into sky: (sinA, -cosA)
+          const dNormal = dx * sinA - dy * cosA;
+
+          // Check if marble is touching or resting on the top surface of the bar
+          if (Math.abs(s) <= halfL + m.r * 0.4) {
+            const surfaceDist = dNormal - halfW; // 0 when on top surface, negative when penetrating
+
+            if (surfaceDist <= m.r && surfaceDist >= -(m.r * 1.4)) {
+              // Exact position resolution: place marble tangent to the top surface
+              m.x = ch.x + s * cosA + (halfW + m.r) * sinA;
+              m.y = ch.y + s * sinA - (halfW + m.r) * cosA;
+
+              // Decompose velocity into Tangent (along slope) & Normal (perpendicular)
+              const vTangent = m.vx * cosA + m.vy * sinA;
+              const vImpact = -sinA * m.vx + cosA * m.vy; // Positive when falling into bar
+
+              let newImpact = 0;
+              if (vImpact > 0.4) {
+                // Bounce with gentle acoustic restitution
+                newImpact = -vImpact * 0.35;
+
+                // Trigger chime strike if moving fast enough and not on instant repeat
+                if (m.cooldown === 0 || m.lastHitBarId !== ch.id) {
+                  ch.glow = 1.0;
+                  m.lastHitBarId = ch.id;
+                  m.cooldown = 14;
+
+                  if (window.audioEngine) {
+                    window.audioEngine.playChime(ch.note, m.x);
+                  }
+
+                  if (window.triggerHaptic) {
+                    window.triggerHaptic(14);
+                  }
+
+                  // Soundwave ripple ring exactly at the contact point
+                  const contactX = ch.x + s * cosA + halfW * sinA;
+                  const contactY = ch.y + s * sinA - halfW * cosA;
+                  this.rings.push({
+                    x: contactX,
+                    y: contactY,
+                    r: 4,
+                    alpha: 0.85,
+                    color: ch.color
+                  });
+                }
+              }
+
+              // Gravity acceleration along the slope
+              const gTangent = gravity * sinA;
+              const newTangent = (vTangent + gTangent) * 0.985; // Rolling friction
+
+              // Recompose Cartesian velocity
+              m.vx = newTangent * cosA - newImpact * sinA;
+              m.vy = newTangent * sinA + newImpact * cosA;
+              break;
+            }
           }
+        }
 
-          // Haptic
-          if (window.triggerHaptic) {
-            window.triggerHaptic(12);
+        // Check if landing in the bottom collection tray
+        if (m.y >= trayY - m.r && Math.abs(m.x - cx) <= 125) {
+          m.inTray = true;
+          m.y = trayY - m.r;
+
+          if (Math.abs(m.vy) > 1.0 && window.audioEngine) {
+            window.audioEngine._playSubClick(
+              window.audioEngine.ctx ? window.audioEngine.ctx.currentTime : 0,
+              window.audioEngine.getPanning(m.x),
+              520
+            );
           }
+          m.vy = -m.vy * 0.22;
+        }
+      } else {
+        // Settling physics inside the bottom tray
+        m.y = trayY - m.r;
+        m.vy = 0;
+        // Gentle roll towards center of tray
+        m.vx = (m.vx + (cx - m.x) * 0.04) * 0.84;
+        m.x += m.vx;
 
-          // Soundwave ripple ring
-          this.rings.push({
-            x: projX,
-            y: projY,
-            r: 4,
-            alpha: 0.8,
-            color: ch.color
-          });
-
-          // Reflect velocity along normal
-          const nx = -(y2 - y1) / Math.sqrt(l2);
-          const ny = (x2 - x1) / Math.sqrt(l2);
-
-          const dot = m.vx * nx + m.vy * ny;
-          m.vx = (m.vx - 2 * dot * nx) * 0.72 + (ch.angle > 0 ? 1.5 : -1.5);
-          m.vy = (m.vy - 2 * dot * ny) * 0.72;
-
-          // Reposition outside bar
-          m.x = projX + nx * (m.r + ch.width / 2 + 1);
-          m.y = projY + ny * (m.r + ch.width / 2 + 1);
+        // Count marbles in tray; fade out oldest if overcrowded
+        const trayMarbles = this.marbles.filter((item) => item.inTray);
+        if (trayMarbles.length > 7 && m === trayMarbles[0]) {
+          m.alpha -= 0.035;
+          if (m.alpha <= 0) {
+            this.marbles.splice(i, 1);
+            continue;
+          }
         }
       }
 
-      // Tray collection at bottom
-      if (m.y > floorY) {
+      // Remove fallen out marbles
+      if (m.y > this.height + 40 || m.x < -40 || m.x > this.width + 40) {
         this.marbles.splice(i, 1);
       }
     }
@@ -189,7 +282,7 @@ class ZenChimesStation {
     // Decay Chime Glows
     for (let ch of this.chimes) {
       if (ch.glow > 0) {
-        ch.glow -= 0.035;
+        ch.glow -= 0.04;
         if (ch.glow < 0) ch.glow = 0;
       }
     }
@@ -197,8 +290,8 @@ class ZenChimesStation {
     // Update Ripple Rings
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const ring = this.rings[i];
-      ring.r += 2.2;
-      ring.alpha -= 0.03;
+      ring.r += 2.4;
+      ring.alpha -= 0.032;
       if (ring.alpha <= 0) {
         this.rings.splice(i, 1);
       }
@@ -212,7 +305,10 @@ class ZenChimesStation {
 
     ctx.clearRect(0, 0, w, h);
 
-    // 1. Draw Soundwave Ripple Rings
+    // 1. Draw Top Wooden Dispenser Funnel
+    this._drawDispenser(ctx);
+
+    // 2. Draw Soundwave Ripple Rings
     for (let ring of this.rings) {
       ctx.save();
       ctx.beginPath();
@@ -224,18 +320,47 @@ class ZenChimesStation {
       ctx.restore();
     }
 
-    // 2. Draw Tuned Xylophone / Crystal Chime Bars
+    // 3. Draw Tuned Xylophone / Crystal Chime Bars
     for (let ch of this.chimes) {
       this._drawChime(ctx, ch);
     }
 
-    // 3. Draw Crystal & Gold Glass Marbles
+    // 4. Draw Crystal & Gold Glass Marbles
     for (let m of this.marbles) {
       this._drawMarble(ctx, m);
     }
 
-    // 4. Draw Zen Marble Collection Tray at Bottom
+    // 5. Draw Zen Marble Collection Tray at Bottom
     this._drawTray(ctx, w, h);
+  }
+
+  _drawDispenser(ctx) {
+    const x = this.chuteX;
+    const y = this.chuteY - 12;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+
+    // Elegant wooden dispenser nozzle
+    const grad = ctx.createLinearGradient(x - 20, 0, x + 20, 0);
+    grad.addColorStop(0, '#E2E8F0');
+    grad.addColorStop(0.5, '#FFFFFF');
+    grad.addColorStop(1, '#CBD5E1');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x - 18, y - 8, 36, 16, 8);
+    ctx.fill();
+
+    // Inner drop aperture
+    ctx.fillStyle = '#64748B';
+    ctx.beginPath();
+    ctx.arc(x, y + 2, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   _drawChime(ctx, ch) {
@@ -246,49 +371,61 @@ class ZenChimesStation {
     const halfL = ch.length / 2;
     const halfW = ch.width / 2;
 
-    // Soft Drop Shadow
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
-    ctx.shadowBlur = 12;
+    // Soft Neumorphic Drop Shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+    ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 6;
 
     // Chime Bar Body
     ctx.fillStyle = ch.color;
     ctx.beginPath();
-    ctx.roundRect(-halfL, -halfW, ch.length, ch.width, 6);
+    ctx.roundRect(-halfL, -halfW, ch.length, ch.width, 8);
     ctx.fill();
+
+    // Top Surface Light Edge (Gives it high physical definition)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.fillRect(-halfL + 6, -halfW, ch.length - 12, 3);
 
     // Glow on Strike
     if (ch.glow > 0) {
       ctx.shadowColor = '#FFFFFF';
-      ctx.shadowBlur = 24 * ch.glow;
+      ctx.shadowBlur = 28 * ch.glow;
       ctx.strokeStyle = `rgba(255, 255, 255, ${ch.glow})`;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.5;
       ctx.stroke();
     }
 
     // Steel Pin Mounting Dots
     ctx.fillStyle = '#64748B';
     ctx.beginPath();
-    ctx.arc(-halfL + 12, 0, 2.5, 0, Math.PI * 2);
-    ctx.arc(halfL - 12, 0, 2.5, 0, Math.PI * 2);
+    ctx.arc(-halfL + 14, 0, 2.5, 0, Math.PI * 2);
+    ctx.arc(halfL - 14, 0, 2.5, 0, Math.PI * 2);
     ctx.fill();
+
+    // Musical Note Badge (e.g. "C4", "D4")
+    ctx.fillStyle = 'rgba(71, 85, 105, 0.7)';
+    ctx.font = 'bold 9px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch.name, 0, 0.5);
 
     ctx.restore();
   }
 
   _drawMarble(ctx, m) {
     ctx.save();
+    ctx.globalAlpha = m.alpha;
     ctx.translate(m.x, m.y);
 
-    // Marble Drop Shadow
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 4;
+    // Soft Drop Shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.22)';
+    ctx.shadowBlur = 9;
+    ctx.shadowOffsetY = 5;
 
-    // Glass / Gold Spherical Body
+    // Glass / Spherical Body
     const grad = ctx.createRadialGradient(-m.r * 0.35, -m.r * 0.35, 1, 0, 0, m.r);
     grad.addColorStop(0, '#FFFFFF');
-    grad.addColorStop(0.3, m.color);
+    grad.addColorStop(0.35, m.color);
     grad.addColorStop(1, '#0F172A');
 
     ctx.fillStyle = grad;
@@ -296,8 +433,8 @@ class ZenChimesStation {
     ctx.arc(0, 0, m.r, 0, Math.PI * 2);
     ctx.fill();
 
-    // Specular highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    // Specular Highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.beginPath();
     ctx.arc(-m.r * 0.35, -m.r * 0.35, m.r * 0.28, 0, Math.PI * 2);
     ctx.fill();
@@ -306,15 +443,31 @@ class ZenChimesStation {
   }
 
   _drawTray(ctx, w, h) {
+    const cx = w / 2;
+    const trayY = h - 48;
+
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetY = 6;
+
+    // Tray Body
+    ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.roundRect(w / 2 - 130, h - 36, 260, 24, 12);
+    ctx.roundRect(cx - 130, trayY - 6, 260, 28, 14);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.8)';
-    ctx.lineWidth = 2;
+    // Soft Tray Rim
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.9)';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
+
+    // Felt Catch Cushion
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.8)';
+    ctx.beginPath();
+    ctx.roundRect(cx - 120, trayY, 240, 16, 8);
+    ctx.fill();
+
     ctx.restore();
   }
 }

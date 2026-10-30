@@ -83,3 +83,4 @@ To submit the game to YouTube Playables:
 1. Ensure all files in the root directory are included (`index.html`, `style.css`, `js/` directory).
 2. Zip the contents directly into a single archive (ensure `index.html` is at the root of the `.zip`).
 3. Upload the `.zip` archive to the YouTube Playables Developer Portal.
+

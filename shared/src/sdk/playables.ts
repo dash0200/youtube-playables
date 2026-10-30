@@ -103,10 +103,12 @@ export const Playables = {
    * data). Returns 'granted' when the player earned the reward, 'declined' when
    * they skipped it, and 'unavailable' when no ad could be shown (ads only reach
    * some users), so give the reward anyway or offer another path.
-   * Outside YouTube it simulates a short ad and grants.
+   * Outside YouTube: the dev server simulates a short ad and grants; a built
+   * game hosted elsewhere (a web demo) reports 'unavailable' right away.
    */
   async requestRewardedAd(rewardId: string): Promise<'granted' | 'declined' | 'unavailable'> {
     if (!IN_PLAYABLES) {
+      if (!import.meta.env.DEV) return 'unavailable';
       console.info('[playables:dev] rewarded ad', rewardId);
       await new Promise((r) => setTimeout(r, DEV_AD_MS));
       return 'granted';

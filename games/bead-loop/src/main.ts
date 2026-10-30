@@ -46,8 +46,8 @@ void bootPlayable({
   async load(core) {
     const [icons, , sim] = await Promise.all([loadIcons(), save.load(), createSim()]);
     app = createApp(core, icons, sim);
-    // Test hook for automated play-testing; only with ?debug in the URL.
-    if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __beadLoop: App }).__beadLoop = app;
+    // Test hook for automated play-testing; dev server only, with ?debug in the URL.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) (window as unknown as { __beadLoop: App }).__beadLoop = app;
     // Keep YouTube's best score in sync with the save (certification rule).
     const cleared = save.data.unlocked - 1;
     if (cleared > save.data.scoreSent) {

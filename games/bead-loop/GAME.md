@@ -4,10 +4,10 @@
 > Repo-wide rules (shared code, Playables requirements, commands) are in `/AGENTS.md`.
 
 ## One-line pitch
-Beads ride a conveyor loop above a row of tubes. **Each tube pulls in beads
-matching the colour on its top**, not its own colour, until it's full. Tap a
-tube to eject its top run back onto the loop. Get every tube full of its own
-colour without letting the loop jam.
+Beads ride a conveyor loop above a row of tubes. **Each tube takes only its own
+colour, and only while its own colour is on top** (or it's empty). A wrong
+colour on top blocks it: tap the tube to eject its top run back onto the loop.
+Get every tube full of its own colour without letting the loop jam.
 
 ## Commands
 ```bash
@@ -18,8 +18,15 @@ npm run parity -- bead-loop     # Rust sim vs TypeScript sim, must print all ✔
 npm run test:rust               # cargo tests (rules, FFI, core)
 npm run zip -- bead-loop        # build (incl. wasm if Rust available) + validate + releases/*.zip
 npm run typecheck
-cargo run --release --manifest-path rust/Cargo.toml -p bead-loop-tools --bin difficulty -- games/bead-loop/src/game/levels.json
+cargo run --release --manifest-path rust/Cargo.toml -p bead-loop-tools --bin difficulty -- games/bead-loop/src/game/levels.json [level]
+cargo run --release --manifest-path rust/Cargo.toml -p bead-loop-tools --bin probe -- [from] [to] [candidates]
 ```
+**Windows without Visual Studio C++ build tools:** the default MSVC Rust
+toolchain can't link native code (Git Bash's `link` also shadows MSVC's). Use the
+GNU toolchain from PowerShell for any cargo step, including the npm scripts:
+`$env:RUSTUP_TOOLCHAIN='1.97.0-x86_64-pc-windows-gnu'; $env:CARGO_TARGET_DIR="$PWD\rust\target\gnu"`.
+ust	arget\gnu"`.
+`npm run wasm` additionally needs `rustup +1.97.0-x86_64-pc-windows-gnu target add wasm32-unknown-unknown`.
 Dev helpers: **P** simulates YouTube pause/resume. Add `?debug` to the URL to
 expose `window.__beadLoop` (the App, including `sim.s` state) for automated
 play-tests. Save data lives in `localStorage["ytp-save:bead-loop"]` outside YouTube.
@@ -29,7 +36,7 @@ play-tests. Save data lives in `localStorage["ytp-save:bead-loop"]` outside YouT
 |---|---|
 | Belt | `slots` positions moving **clockwise** at `speed` slots/s. Slot `i` sits at belt parameter `(i + offset) mod N`. Limited capacity is the core pressure. |
 | Tube | One per colour; **shell colour = tube index**. Holds `cap` blocks × `K`=9 beads. Contents are a bead stack (bottom → top). |
-| **Intake** | `intake = colour of the top bead` (shell colour if empty). Whenever a slot passes the tube's port: if the bead matches the intake and the tube has space, it falls in. So a red tube with green on top swallows greens until full. |
+| **Intake** | A tube is **open** while its top bead is its shell colour, or it is empty (`is_open`). Whenever a slot passes the port of an open tube with space, a bead of the **shell colour** falls in. A wrong colour on top **blocks** the tube: nothing gets in (not even its own colour) until that run is tapped off. |
 | Queue | Ejected beads wait in the tube's pipe and drop into **empty** passing slots. |
 | Tap | Ejects the **top run** (all consecutive top beads of one colour, plus beads still falling in) into the queue. Denied (shake) if the tube is complete, empty, or its queue already holds ≥ `K` beads. |
 | Complete | Tube full and every bead is its shell colour → glows, ✓ on the cap, no more intake/taps. |
@@ -37,9 +44,10 @@ play-tests. Save data lives in `localStorage["ytp-save:bead-loop"]` outside YouT
 | **Lose** | Belt 100 % full with no absorption for `JAM_TIME` (3 s) → "Loop jammed!". Timer counts only after the first tap. |
 | Stars | ≤ par → 3, ≤ 1.6×par → 2, else 1. Par = bot's worst clear time × 1.15 + 5 s. |
 
-Strategy the player learns: expose the shell colour on top so a tube vacuums its
-own colour; only eject runs that some other tube can currently take; watch the
-loop meter. Digging out buried wrong beads needs belt room.
+Strategy the player learns: unblock the tube whose colour is piling up on the
+loop first (unblocking frees room, because that tube starts eating); dig out
+buried wrong beads early, before more of the own colour lands on top of them;
+don't eject runs whose own tube is still blocked when the loop is nearly full.
 
 ## Architecture
 ```
@@ -47,7 +55,7 @@ rust/crates/
 ├─ playables-core/      shared no_std: mulberry32 Rng, modp/floor/hash01, RoundedRect path (libm)
 ├─ bead-loop/           no_std, no alloc: sim.rs (rules, SoA state, positions, checksum), bot.rs (solver/heuristic player)
 ├─ bead-loop-wasm/      C-ABI exports (bl_*) over one static Sim → wasm32-unknown-unknown
-└─ bead-loop-tools/     native std: gen-levels, trace (parity), difficulty (random-player stats)
+└─ bead-loop-tools/     native std: gen-levels, trace (parity), difficulty + probe (tuning reports)
 
 games/bead-loop/src/
 ├─ main.ts              boot, createSim(), save/score, ?debug hook
@@ -104,13 +112,31 @@ heaviest level (60) to a few ms.
 
 ## Levels
 - Generated offline by `bead-loop-tools::generate` (seed per level number and attempt).
-- Every level must be cleared by the bot in **12 scenarios** (2 port offsets ×
-  3 reaction times × 2 frame rates), so levels aren't fragile on different screens.
-- Difficulty curve in `params()` (tools/src/lib.rs): colours 3→6, cap 4→7,
-  starting free space 2 → 1 → 0 blocks per tube (full tubes from level 15),
-  belt capacity ratio 0.7 → 0.33 of all beads, speed 22→34 slots/s.
-- `difficulty` bin reports how often a random tapper jams/wins per level. Late
-  levels should punish random play while the bot always clears.
+- **Solvable:** the planning bot (`bot.rs`) must clear every level in **12
+  scenarios** (2 port offsets × reaction 0.3/0.55/0.8 s × 2 frame rates) within
+  75 s, so levels aren't fragile on different screens or for slow players.
+- **Difficulty is measured, not guessed.** A "naive" simulated player knows the
+  rule (clears blocked tubes, digs buried beads) but never plans around loop
+  room and reacts at 0.45-0.75 s. `target(n)` sets its win rate per level; the
+  generator sweeps loop room (`RATIOS`, loose → tight) and keeps the first
+  solvable layout within ±8 % of target, confirmed on a second set of seeds.
+- Board size in `params()`: colours 3 → 4 → 5 → 6 (levels 1-2, 3-6, 7-12, 13+),
+  cap 4 → 7, starting free space 2 → 1 → 0 blocks per tube, speed 22 → 32 slots/s.
+
+### Difficulty targets (naive player's win rate)
+| Levels | Target | Feel |
+|---|---|---|
+| 1-6 | ~95 % | onboarding: 3-4 colours, can't really lose |
+| 7-15 | 85 → 65 % | the loop starts to matter |
+| 16-35 | 65 → 40 % | planning pays off |
+| 36-60 | 40 → 25 % | needs a plan, never a coin flip for the bot |
+Sawtooth: every 5th level is 12 points harder, the next one 8 points easier.
+Measured (60 fresh games per level): naive 53 % average, random tapping 22 %,
+the slow (0.8 s) bot clears 60/60. Levels land 0-10 points easier than target.
+- `difficulty` prints, per level, random / naive win rates vs target and the slow
+  bot; with a level number it prints the naive rate over 10 seed batches
+  (batch-to-batch noise is about ±8 points). `probe` maps solvability and naive
+  rate against loop room for chosen levels when retuning.
 - Regenerating changes levels players may have beaten. Prefer appending
   (raise the count in game.json scripts.levels) over editing early params.
 

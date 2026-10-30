@@ -8,9 +8,10 @@
 //! - Belt: `n_slots` slots move clockwise at `speed` slots/s. Slot i is at belt
 //!   parameter (i + offset) mod n.
 //! - Tube t has a shell colour (= t) and a stack of beads (bottom → top).
-//! - INTAKE = colour of the tube's top bead (shell colour if empty). Whenever a
-//!   slot passes a tube's port: a bead of the intake colour drops in while the
-//!   tube has space; otherwise an empty slot takes one bead from the tube's queue.
+//! - A tube is OPEN while its top bead is its shell colour (or it is empty).
+//!   Whenever a slot passes the port of an open tube with space, a bead of the
+//!   shell colour drops in. A wrong colour on top blocks the tube until tapped.
+//!   An empty slot passing a port takes one bead from that tube's queue.
 //! - TAP ejects the top run (all top beads of the same colour, plus beads still
 //!   falling in) into the tube's queue; they re-enter the belt via empty slots.
 //! - Complete: tube full and every bead is its shell colour. Win: all complete.
@@ -149,6 +150,7 @@ impl Sim {
     }
 
     // ---------- queries ----------
+    /// Colour of the top bead (shell colour if empty).
     #[inline]
     pub fn intake(&self, t: usize) -> u8 {
         let len = self.tube_len[t] as usize;
@@ -157,6 +159,12 @@ impl Sim {
         } else {
             self.tube_beads[t * MAX_BEADS + len - 1]
         }
+    }
+
+    /// True while the tube can take beads: top is its own colour, or it is empty.
+    #[inline]
+    pub fn is_open(&self, t: usize) -> bool {
+        self.intake(t) == self.tube_shell[t]
     }
 
     #[inline]
@@ -258,7 +266,7 @@ impl Sim {
             self.event(EV_DENY, t as u8);
             return false;
         }
-        let color = self.intake(t);
+        let color = self.tube_shell[t];
         for _ in 0..fl {
             self.q_push(t, color);
         }
@@ -280,7 +288,7 @@ impl Sim {
 
     fn arrive(&mut self, t: usize, i: usize) -> bool {
         let c = self.slot_color[i];
-        if self.complete[t] == 0 && c != EMPTY && c == self.intake(t) && self.space(t) > 0 {
+        if self.complete[t] == 0 && c == self.tube_shell[t] && self.is_open(t) && self.space(t) > 0 {
             self.slot_color[i] = EMPTY;
             let fl = self.fall_len[t] as usize;
             self.fall_t[t * MAX_BEADS + fl] = 0.0;
@@ -335,7 +343,7 @@ impl Sim {
                     self.fall_t[base + k - 1] = self.fall_t[base + k];
                 }
                 self.fall_len[t] -= 1;
-                let c = self.intake(t);
+                let c = self.tube_shell[t];
                 self.push_bead(t, c);
                 self.event(EV_LAND, t as u8);
             }

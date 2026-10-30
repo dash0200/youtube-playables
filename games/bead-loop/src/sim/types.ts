@@ -72,10 +72,13 @@ export interface Sim {
 }
 
 // ---- read helpers (backend-independent) ----
+/** Colour of the top bead (shell colour if empty). */
 export const intake = (s: SimState, t: number): number => {
   const len = s.tubeLen[t];
   return len === 0 ? s.tubeShell[t] : s.tubeBeads[t * MAX_BEADS + len - 1];
 };
+/** True while the tube takes beads: its top is its own colour, or it is empty. */
+export const isOpen = (s: SimState, t: number): boolean => intake(s, t) === s.tubeShell[t];
 export const beadAt = (s: SimState, t: number, j: number): number => s.tubeBeads[t * MAX_BEADS + j];
 export const queueAt = (s: SimState, t: number, k: number): number => s.queue[t * QCAP + ((s.qHead[t] + k) % QCAP)];
 export const hasWrong = (s: SimState, t: number): boolean => {

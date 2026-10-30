@@ -4,7 +4,7 @@ import { rgba, shade } from '@shared/ui/color';
 import { roundRect, text } from '@shared/ui/draw';
 import { drawGlyph, type GlyphKind } from '@shared/ui/glyphs';
 import { drawBead } from '@shared/ui/sprites';
-import { EMPTY, FALL_TIME, JAM_TIME, K, MAX_BEADS, S, beadAt, intake, queueAt, type SimState } from '../sim/types';
+import { FALL_TIME, JAM_TIME, K, MAX_BEADS, S, EMPTY, beadAt, isOpen, queueAt, type SimState } from '../sim/types';
 import { PALETTE, THEME } from './constants';
 import type { BoardFx } from './fx';
 import { beadPos, cellTop, type Layout, type TubeBox } from './layout';
@@ -283,21 +283,23 @@ function stackLayer(tb: TubeBox, hex: string, glyph: GlyphKind, cells: number, c
   });
 }
 
-function pipeLayer(L: Layout, tb: TubeBox, hex: string, dpr: number): Layer {
+/** Pipe in the tube's colour; dimmed while the tube is blocked. */
+function pipeLayer(L: Layout, tb: TubeBox, hex: string, open: boolean, dpr: number): Layer {
   const pw = L.pipeW;
   const ph = tb.y + tb.w * 0.1 - L.loopBottom;
   const lw = Math.max(1.5, pw * 0.1);
-  return layer(`pipe|${hex}`, pw, ph, lw, dpr, (g) => {
+  const a = open ? 1 : 0.35;
+  return layer(`pipe|${hex}|${open}`, pw, ph, lw, dpr, (g) => {
     roundRect(g, 0, 0, pw, ph, pw * 0.35);
     g.fillStyle = THEME.tubeInner;
     g.fill();
     const lg = g.createLinearGradient(0, 0, pw, 0);
-    lg.addColorStop(0, rgba(hex, 0.3));
-    lg.addColorStop(0.5, rgba(hex, 0.06));
-    lg.addColorStop(1, rgba(hex, 0.22));
+    lg.addColorStop(0, rgba(hex, 0.3 * a));
+    lg.addColorStop(0.5, rgba(hex, 0.06 * a));
+    lg.addColorStop(1, rgba(hex, 0.22 * a));
     g.fillStyle = lg;
     g.fill();
-    g.strokeStyle = rgba(hex, 0.6);
+    g.strokeStyle = open ? rgba(hex, 0.6) : 'rgba(255,255,255,0.16)';
     g.lineWidth = lw;
     g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.14)';
@@ -376,10 +378,12 @@ function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: Bo
   ctx.setLineDash([]);
   ctx.lineDashOffset = 0;
 
-  // ports: rings in each tube's intake colour, pulsing when they swallow a bead
+  // ports: a glowing ring in the tube's colour while it's open (pulsing as it
+  // swallows a bead); a dim dashed ring while a wrong colour on top blocks it
   for (let t = 0; t < s.nTubes; t++) {
     const tb = L.tubes[t];
-    const hex = PALETTE[intake(s, t)].hex;
+    const hex = PALETTE[s.tubeShell[t]].hex;
+    const open = isOpen(s, t);
     const p = fx.port[t];
     const sc = 1 + Ease.outCubic(p) * 0.25;
     ctx.beginPath();
@@ -388,9 +392,19 @@ function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: Bo
       ctx.fillStyle = rgba(hex, 0.25 * p);
       ctx.fill();
     }
-    ctx.strokeStyle = s.complete[t] ? 'rgba(255,255,255,0.15)' : rgba(hex, 0.75 + p * 0.25);
-    ctx.lineWidth = 2 + p * 1.5;
+    if (s.complete[t]) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 2;
+    } else if (open) {
+      ctx.strokeStyle = rgba(hex, 0.8 + p * 0.2);
+      ctx.lineWidth = 2.5 + p * 1.5;
+    } else {
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      ctx.lineWidth = 1.5 + p * 1.5;
+    }
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // belt beads (positions from the simulation); new ones pop in with a bounce
@@ -406,8 +420,8 @@ function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: Bo
   }
 }
 
-function drawPipe(ctx: CanvasRenderingContext2D, L: Layout, tb: TubeBox, hex: string, glow: number, dpr: number): void {
-  blit(ctx, pipeLayer(L, tb, hex, dpr), tb.cx - L.pipeW / 2, L.loopBottom);
+function drawPipe(ctx: CanvasRenderingContext2D, L: Layout, tb: TubeBox, hex: string, open: boolean, glow: number, dpr: number): void {
+  blit(ctx, pipeLayer(L, tb, hex, open, dpr), tb.cx - L.pipeW / 2, L.loopBottom);
   if (glow > 0) {
     roundRect(ctx, tb.cx - L.pipeW / 2, L.loopBottom, L.pipeW, tb.y + tb.w * 0.1 - L.loopBottom, L.pipeW * 0.35);
     ctx.fillStyle = rgba(hex, glow * 0.25);
@@ -640,7 +654,7 @@ function drawQueue(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: Tu
 function drawFalling(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: TubeBox, L: Layout, dpr: number): void {
   const fl = s.fallLen[t];
   if (!fl) return;
-  const pc = PALETTE[intake(s, t)];
+  const pc = PALETTE[s.tubeShell[t]];
   const len = s.tubeLen[t];
   const start = L.beadR / tb.br;
   for (let k = 0; k < fl; k++) {
@@ -706,7 +720,7 @@ function drawEffects(ctx: CanvasRenderingContext2D, fx: BoardFx): void {
 export function drawBoard(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, fx: BoardFx, dpr: number, hintTube: number): void {
   const base = baseLayer(L, dpr);
   blit(ctx, base.l, base.x, base.y);
-  for (let t = 0; t < s.nTubes; t++) drawPipe(ctx, L, L.tubes[t], PALETTE[intake(s, t)].hex, fx.port[t], dpr);
+  for (let t = 0; t < s.nTubes; t++) drawPipe(ctx, L, L.tubes[t], PALETTE[s.tubeShell[t]].hex, isOpen(s, t), fx.port[t], dpr);
   for (let t = 0; t < s.nTubes; t++) drawQueue(ctx, s, t, L.tubes[t], L, fx, dpr);
   drawTrack(ctx, s, L, fx, dpr);
   const pulse = 0.5 + 0.5 * Math.sin(fx.time * 5);

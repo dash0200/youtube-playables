@@ -11,7 +11,7 @@ import { BoardFx } from '../game/fx';
 import { computeLayout, type Layout } from '../game/layout';
 import { getLevel, starsFor } from '../game/levels';
 import { beltFill, clearLayerCache, drawBackground, drawBoard, drawLoopInfo } from '../game/render';
-import { EV, S, hasWrong, intake, type LevelData } from '../sim';
+import { EV, S, isOpen, type LevelData } from '../sim';
 
 type Result = 'none' | 'win' | 'lose';
 
@@ -141,10 +141,10 @@ export class PlayScene implements Scene {
     const s = this.app.sim.s;
     if (this.levelNum > 2 || s.scal[S.TAPS] >= 3 || this.result !== 'none') return null;
     let tube = -1;
-    for (let t = 0; t < s.nTubes && tube < 0; t++) if (intake(s, t) !== s.tubeShell[t] && hasWrong(s, t)) tube = t;
+    for (let t = 0; t < s.nTubes && tube < 0; t++) if (!s.complete[t] && !isOpen(s, t)) tube = t;
     const lines = this.levelNum === 1 && s.scal[S.TAPS] < 1
-      ? ['Each tube pulls in beads of its TOP colour', 'Tap the glowing tube to send its top out']
-      : ['Fill every tube with its own colour', "Don't let the loop fill up!"];
+      ? ['A tube only takes its own colour', 'Tap the glowing tube to clear its top']
+      : ['A wrong colour on top blocks a tube', "Don't let the loop fill up!"];
     return { tube, lines };
   }
 

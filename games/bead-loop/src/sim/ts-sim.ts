@@ -2,7 +2,7 @@ import { hash01, mod } from '@shared/engine/math';
 import { RoundedRectPath } from '@shared/engine/path';
 import {
   EMPTY, EV, FALL_TIME, JAM_TIME, K, MAX_BEADS, MAX_CAP, MAX_EVENTS, MAX_SLOTS, MAX_TUBES, QCAP,
-  QUEUE_TAP_LIMIT, S, emptyState, intake, type LevelData, type Sim, type SimState,
+  QUEUE_TAP_LIMIT, S, emptyState, isOpen, type LevelData, type Sim, type SimState,
 } from './types';
 
 /**
@@ -147,7 +147,7 @@ export class TsSim implements Sim {
       this.event(EV.DENY, t);
       return false;
     }
-    const color = intake(s, t);
+    const color = s.tubeShell[t];
     for (let k = 0; k < fl; k++) this.qPush(t, color);
     s.fallLen[t] = 0;
     const run = this.topRun(t);
@@ -168,7 +168,7 @@ export class TsSim implements Sim {
   private arrive(t: number, i: number): boolean {
     const s = this.s;
     const c = s.slotColor[i];
-    if (s.complete[t] === 0 && c !== EMPTY && c === intake(s, t) && this.space(t) > 0) {
+    if (s.complete[t] === 0 && c === s.tubeShell[t] && isOpen(s, t) && this.space(t) > 0) {
       s.slotColor[i] = EMPTY;
       s.fallT[t * MAX_BEADS + s.fallLen[t]] = 0;
       s.fallLen[t]++;
@@ -210,7 +210,7 @@ export class TsSim implements Sim {
         const fl = s.fallLen[t];
         for (let k = 1; k < fl; k++) s.fallT[base + k - 1] = s.fallT[base + k];
         s.fallLen[t]--;
-        this.pushBead(t, intake(s, t));
+        this.pushBead(t, s.tubeShell[t]);
         this.event(EV.LAND, t);
       }
       s.shake[t] = Math.max(s.shake[t] - dt * 4, 0);

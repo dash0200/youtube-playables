@@ -31,10 +31,27 @@ fn has_wrong(s: &Sim, t: usize) -> bool {
     (0..len).any(|j| s.tube_beads[t * MAX_BEADS + j] != s.tube_shell[t])
 }
 
+/// Beads of colour `c` riding the belt or waiting in any pipe.
+fn waiting(s: &Sim, c: u8) -> usize {
+    let belt = s.slot_color[..s.n_slots].iter().filter(|&&x| x == c).count();
+    let queued: usize = (0..s.n_tubes)
+        .map(|t| (0..s.q_len[t] as usize).filter(|&k| s.queue[t * QCAP + (s.q_head[t] as usize + k) % QCAP] == c).count())
+        .sum();
+    belt + queued
+}
+
 /// Picks a tube to tap, or None to wait.
+///
+/// 1. Unblock: a tube with a wrong colour on top can't take anything, and
+///    unblocking it lets its own colour off the loop (which frees room), so
+///    clear the blocked tube with the most of its colour waiting, preferring
+///    short runs. Tapping needs no belt room: ejected beads wait in the pipe.
+/// 2. Dig: an open tube with wrong beads buried must lose its top eventually.
+///    Dig when it is full or none of its own colour is waiting (nothing to
+///    miss), and the belt has some room for the run.
 pub fn choose(s: &Sim) -> Option<usize> {
     let free = s.scal[S_FREE] as usize;
-    let mut best: Option<(usize, usize)> = None;
+    let mut best: Option<(usize, i64)> = None;
     for t in 0..s.n_tubes {
         if s.complete[t] != 0 || s.q_len[t] as usize >= QUEUE_TAP_LIMIT || s.fall_len[t] > 0 {
             continue;
@@ -43,22 +60,17 @@ pub fn choose(s: &Sim) -> Option<usize> {
         if len == 0 || !has_wrong(s, t) {
             continue;
         }
-        let run = s.top_run(t);
-        let top = s.intake(t);
-        let score = if top != s.tube_shell[t] {
-            if free < run + K {
-                continue;
-            }
-            run
+        let run = s.top_run(t) as i64;
+        let want = waiting(s, s.tube_shell[t]) as i64;
+        let score = if !s.is_open(t) {
+            want * 4 - run
         } else {
-            // Top is the right colour but wrong beads are buried: dig only when
-            // the tube is full and there is plenty of room on the belt.
-            if s.space(t) > 0 || free < run + 2 * K {
+            if (want > 0 && s.space(t) > 0) || free * 2 < run as usize {
                 continue;
             }
-            1000 + run
+            -1000 - run
         };
-        if best.map_or(true, |(_, b)| score < b) {
+        if best.map_or(true, |(_, b)| score > b) {
             best = Some((t, score));
         }
     }

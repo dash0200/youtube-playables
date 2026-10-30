@@ -1,30 +1,53 @@
-//! Difficulty report: for each level, how often a random tapper jams vs the bot's result.
-//! cargo run --release -p bead-loop-tools --bin difficulty -- <levels.json>
-use bead_loop::bot::nominal_ports;
-use bead_loop::sim::Sim;
-use bead_loop_tools::{from_json, LevelJson};
-use playables_core::rng::Rng;
+//! Difficulty report for every level, from three simulated players:
+//! - random: taps any tube at random (doesn't know the rules)
+//! - naive:  knows the rule (clears blocked tubes, digs out buried beads) but
+//!   never checks room on the loop and reacts at human speed
+//! - slow bot: the planning bot with a human-ish 0.8 s reaction time
+//! Compare the naive column with the target the generator aimed for.
+//! cargo run --release -p bead-loop-tools --bin difficulty -- <levels.json> [level]
+//! With a level number, prints its naive win rate over many seed batches instead.
+use bead_loop::bot::{self, nominal_ports};
+use bead_loop_tools::{from_json, naive_policy, naive_rate, play_policy, random_policy, target, LevelJson};
+
+const RUNS: u32 = 60;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let levels: Vec<LevelJson> = serde_json::from_str(&std::fs::read_to_string(&args[1]).unwrap()).unwrap();
-    for j in levels.iter().filter(|j| j.n == 1 || j.n % 5 == 0) {
-        let l = from_json(j);
-        let (mut lost, mut won, mut fast) = (0, 0, 0);
-        let runs = 40;
-        for r in 0..runs {
-            let mut s = Sim::new(&l);
-            let p = nominal_ports(l.colors);
-            for t in 0..l.colors { s.set_port(t, p[t]); }
-            let mut rng = Rng::new(r * 31 + 7);
-            let mut next = 0.5;
-            while s.scal[1] < 150.0 && !s.won() && !s.lost() {
-                if s.scal[1] >= next { next += 0.45; s.tap(rng.int(0, l.colors as i32 - 1) as usize); }
-                s.update(1.0 / 30.0);
-                s.clear_events();
-            }
-            if s.lost() { lost += 1 } else if s.won() { won += 1; if s.scal[2] <= j.par as f64 * 1.6 { fast += 1 } }
-        }
-        println!("level {:>2}: slots {:>3}  random tapper: {:>3}% jam, {:>3}% win, {:>3}% win within 2-star time  (par {}s)", j.n, j.slots, lost * 100 / runs, won * 100 / runs, fast * 100 / runs, j.par);
+    if let Some(n) = args.get(2).map(|s| s.parse::<usize>().unwrap()) {
+        let l = from_json(&levels[n - 1]);
+        let batches: Vec<String> = (0..10).map(|b| format!("{:.0}", naive_rate(&l, 40, 1000 + b * 7919) * 100.0)).collect();
+        println!("level {n}: naive win % per 40-game batch: {} (target {:.0})", batches.join(" "), target(n as u32) * 100.0);
+        return;
     }
+    println!("level col cap slots speed  par | random% naive% target% naive3★% | slowbot");
+    let mut sum = [0u32; 3];
+    for j in &levels {
+        let l = from_json(j);
+        let (mut rnd, mut nav, mut nav3) = (0, 0, 0);
+        // seeds differ from the generator's, so this is an independent check
+        for r in 0..RUNS {
+            if play_policy(&l, r + 5000, random_policy).is_some() {
+                rnd += 1;
+            }
+            if let Some(secs) = play_policy(&l, r + 9000, naive_policy) {
+                nav += 1;
+                if secs <= j.par as f64 {
+                    nav3 += 1;
+                }
+            }
+        }
+        let slow = bot::play_with(&l, &nominal_ports(l.colors), 0.8, 1.0 / 30.0, 400.0);
+        sum[0] += rnd * 100 / RUNS;
+        sum[1] += nav * 100 / RUNS;
+        sum[2] += u32::from(slow.is_some());
+        println!(
+            "{:>5} {:>3} {:>3} {:>5} {:>5.1} {:>4} | {:>7} {:>6} {:>7.0} {:>9} | {}",
+            j.n, l.colors, l.cap, l.slots, l.speed, j.par,
+            rnd * 100 / RUNS, nav * 100 / RUNS, target(j.n) * 100.0, nav3 * 100 / RUNS,
+            slow.map_or("jam".to_string(), |s| format!("{s:.0}s")),
+        );
+    }
+    let n = levels.len() as u32;
+    println!("avg random {}%  naive {}%  slow bot clears {}/{}", sum[0] / n, sum[1] / n, sum[2], n);
 }

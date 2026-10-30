@@ -3,7 +3,7 @@
   "title": "Bead Loop",
   "version": "1.1.0",
   "orientation": "portrait",
-  "description": "Beads ride a loop; each tube pulls in beads matching its TOP colour. Tap to eject the top run. Don't let the loop jam.",
+  "description": "Beads ride a loop; each tube takes its own colour while its own colour is on top. Tap to clear a wrong top. Don't let the loop jam.",
   "wasm": {
     "crate": "bead-loop-wasm",
     "out": "src/wasm/bead_loop.wasm"

@@ -53,24 +53,70 @@ mod tests {
         }
     }
 
+    fn run(s: &mut Sim, secs: f64) {
+        let ports = crate::bot::nominal_ports(s.n_tubes);
+        for t in 0..s.n_tubes {
+            s.set_port(t, ports[t]);
+        }
+        for _ in 0..(secs * 60.0) as usize {
+            s.update(1.0 / 60.0);
+        }
+    }
+
     #[test]
-    fn absorbs_until_full() {
+    fn open_tube_absorbs_own_colour_until_complete() {
         let mut l = simple_level();
-        l.fill = [1, 2, 2, 0, 0, 0]; // tube 0 = [1] with one block of space
+        l.fill = [1, 2, 2, 0, 0, 0];
+        l.tubes[0][0] = 0; // tube 0 = [0]: open, one block of space
         for i in 0..K {
-            l.belt[i * 3] = 1;
+            l.belt[i * 3] = 0;
+            l.belt[i * 3 + 1] = 1; // other colours pass by untouched
         }
         let mut s = Sim::new(&l);
+        assert!(s.is_open(0));
+        run(&mut s, 10.0);
+        assert_eq!(s.tube_len[0] as usize, 2 * K);
+        assert!((0..2 * K).all(|j| s.tube_beads[j] == 0));
+        assert_eq!(s.complete[0], 1);
+    }
+
+    #[test]
+    fn wrong_top_blocks_intake() {
+        let mut l = simple_level();
+        l.fill = [1, 2, 2, 0, 0, 0]; // tube 0 = [1]: shell 0 with colour 1 on top
+        for i in 0..K {
+            l.belt[i * 3] = 0;
+            l.belt[i * 3 + 1] = 1;
+        }
+        let mut s = Sim::new(&l);
+        assert!(!s.is_open(0));
+        run(&mut s, 10.0);
+        // Neither its own colour nor the top colour gets in while blocked.
+        assert_eq!(s.tube_len[0] as usize, K);
+        assert_eq!(s.fall_len[0], 0);
+    }
+
+    #[test]
+    fn tapping_the_blocker_reopens_the_tube() {
+        let mut l = simple_level();
+        l.fill = [2, 2, 2, 0, 0, 0];
+        l.tubes[0][..2].copy_from_slice(&[0, 1]); // own colour under a wrong block
+        for i in 0..K {
+            l.belt[i * 4] = 0;
+        }
+        let mut s = Sim::new(&l);
+        assert!(!s.is_open(0));
         let ports = crate::bot::nominal_ports(3);
         for t in 0..3 {
             s.set_port(t, ports[t]);
         }
+        assert!(s.tap(0));
+        assert!(s.is_open(0));
         for _ in 0..600 {
             s.update(1.0 / 60.0);
         }
-        // Tube 0's top was colour 1, so it pulled colour-1 beads until full.
         assert_eq!(s.tube_len[0] as usize, 2 * K);
-        assert!((0..2 * K).all(|j| s.tube_beads[j] == 1));
+        assert!((0..2 * K).all(|j| s.tube_beads[j] == 0));
     }
 
     #[test]

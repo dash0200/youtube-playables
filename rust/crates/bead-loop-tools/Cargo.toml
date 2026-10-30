@@ -17,6 +17,10 @@ path = "src/bin/trace.rs"
 name = "difficulty"
 path = "src/bin/difficulty.rs"
 
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"
+
 [dependencies]
 bead-loop = { path = "../bead-loop" }
 playables-core = { path = "../playables-core" }

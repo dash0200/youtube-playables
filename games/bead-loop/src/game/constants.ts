@@ -1,16 +1,8 @@
 import type { GlyphKind } from '@shared/ui/glyphs';
+import { LEVEL_COUNT } from './levels';
 
-/** Beads in one block (a block is a 2x2 pack inside a tube cell). */
-export const BEADS_PER_BLOCK = 4;
-/** Max ejected blocks waiting in a tube's pipe before taps are refused. */
-export const MAX_QUEUE_BLOCKS = 2;
-/** Number of levels shown in level select. Levels are generated, so this can grow freely. */
-export const MAX_LEVEL = 60;
-
-/** Seconds for an absorbed bead to fall from the belt into its tube. */
-export const FALL_TIME = 0.32;
-/** Seconds for an ejected block to rise out of its tube. */
-export const EJECT_TIME = 0.2;
+/** Number of playable levels (from levels.json). */
+export const MAX_LEVEL = LEVEL_COUNT;
 
 export interface BeadColor {
   name: string;
@@ -40,5 +32,6 @@ export const THEME = {
   textDim: 'rgba(255,255,255,0.6)',
   accent: '#7c5cff',
   good: '#2fd27e',
+  danger: '#ff4f62',
   star: '#ffd34d',
 };

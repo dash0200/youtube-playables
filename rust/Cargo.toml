@@ -1,0 +1,18 @@
+# Rust workspace for all games. Shared crates live next to game crates.
+#   playables-core   no_std helpers shared by every game (rng, math, paths)
+#   <game>           no_std game rules (pure, testable natively)
+#   <game>-wasm      C-ABI exports compiled to wasm32-unknown-unknown
+#   <game>-tools     native std tools (level generation, parity traces)
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+panic = "abort"

@@ -87,7 +87,7 @@ export function computeLayout(W: number, H: number, colors: number, cap: number,
   for (let i = 0; i < colors; i++) {
     const x = startX + i * tw * (1 + gapR);
     const cx = x + tw / 2;
-    tubes.push({ x, y: tubeTop, w: tw, h: bodyH(tw), cx, pad, cell, br: cell * 0.23, capH: capH(tw) });
+    tubes.push({ x, y: tubeTop, w: tw, h: bodyH(tw), cx, pad, cell, br: cell * 0.145, capH: capH(tw) });
     portFrac.push(path.paramAtBottomX(cx) / path.length);
   }
 
@@ -99,14 +99,14 @@ export function computeLayout(W: number, H: number, colors: number, cap: number,
   };
 }
 
-/** Centre of cell `k` (from the bottom) in a tube; sub = 0..3 picks a bead in the 2x2 pack. */
+/** Centre of bead `sub` (0..8, 3x3, bottom row first) in cell `k` (from the bottom). */
 export function beadPos(tb: TubeBox, k: number, sub: number): { x: number; y: number } {
   const bottom = tb.y + tb.h - tb.pad;
   const cy = bottom - (k + 0.5) * tb.cell;
-  const off = tb.cell * 0.235;
-  const col = sub % 2;
-  const row = Math.floor(sub / 2);
-  return { x: tb.cx + (col === 0 ? -off : off), y: cy + (row === 0 ? off : -off) };
+  const off = tb.cell * 0.31;
+  const col = sub % 3;
+  const row = Math.floor(sub / 3);
+  return { x: tb.cx + (col - 1) * off, y: cy + (1 - row) * off };
 }
 
 export function cellTop(tb: TubeBox, k: number): number {

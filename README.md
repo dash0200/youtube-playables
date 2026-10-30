@@ -10,9 +10,13 @@ engine and shared assets.
 ## Quick start
 ```bash
 npm install
+rustup target add wasm32-unknown-unknown   # once (Rust from https://rustup.rs)
+npm run wasm -- bead-loop      # build the Rust/WebAssembly simulation
 npm run dev -- bead-loop       # play locally
-npm run zip -- bead-loop       # releases/bead-loop-1.0.0.zip → upload to Playables
+npm run zip -- bead-loop       # releases/bead-loop-<version>.zip → upload to Playables
 ```
+Game rules are written in Rust (`rust/`) and compiled to WebAssembly. A TypeScript
+mirror runs if the .wasm hasn't been built yet.
 
 ## Add a new game
 ```bash

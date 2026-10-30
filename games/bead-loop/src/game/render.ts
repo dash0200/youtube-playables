@@ -1,11 +1,11 @@
 import { Ease } from '@shared/engine/ease';
-import { clamp, hash01, lerp, mod } from '@shared/engine/math';
+import { clamp, lerp } from '@shared/engine/math';
 import { rgba, shade } from '@shared/ui/color';
 import { roundRect, text } from '@shared/ui/draw';
 import { drawGlyph } from '@shared/ui/glyphs';
 import { drawBead } from '@shared/ui/sprites';
-import type { Board, Tube } from './board';
-import { BEADS_PER_BLOCK as K, EJECT_TIME, FALL_TIME, PALETTE, THEME } from './constants';
+import { EMPTY, FALL_TIME, JAM_TIME, K, MAX_BEADS, S, beadAt, intake, queueAt, type SimState } from '../sim/types';
+import { PALETTE, THEME } from './constants';
 import { beadPos, cellTop, type Layout, type TubeBox } from './layout';
 
 let bgCache: { w: number; h: number; dpr: number; c: HTMLCanvasElement } | null = null;
@@ -42,30 +42,36 @@ export function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: numb
   ctx.drawImage(bgCache.c, 0, 0, w, h);
 }
 
-function drawPipe(ctx: CanvasRenderingContext2D, L: Layout, tb: TubeBox, color: string): void {
+/** 0..1 how full the belt is. */
+export const beltFill = (s: SimState): number => 1 - s.scal[S.FREE] / Math.max(1, s.nSlots);
+
+function drawPipe(ctx: CanvasRenderingContext2D, L: Layout, tb: TubeBox, intakeHex: string, active: boolean): void {
   const pw = L.pipeW;
   const y0 = L.loopBottom;
   const y1 = tb.y + tb.w * 0.1;
   roundRect(ctx, tb.cx - pw / 2, y0, pw, y1 - y0, pw * 0.3);
   ctx.fillStyle = THEME.tubeInner;
   ctx.fill();
-  ctx.strokeStyle = rgba(color, 0.55);
-  ctx.lineWidth = Math.max(1.5, pw * 0.1);
+  ctx.strokeStyle = rgba(intakeHex, active ? 0.95 : 0.6);
+  ctx.lineWidth = Math.max(1.5, pw * (active ? 0.16 : 0.1));
   ctx.stroke();
 }
 
-function drawTrack(ctx: CanvasRenderingContext2D, b: Board, L: Layout, dpr: number): void {
+function drawTrack(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, dpr: number, now: number): void {
   const { path, trackW } = L;
-  // inner panel
   roundRect(ctx, L.inner.x, L.inner.y, L.inner.w, L.inner.h, L.inner.r);
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.fill();
-  // track body
+
+  // danger glow as the belt fills / jam timer runs
+  const fill = beltFill(s);
+  const jam = s.scal[S.JAM] / JAM_TIME;
+  const danger = Math.max(clamp((fill - 0.8) / 0.2, 0, 1) * 0.6, jam > 0 ? 0.6 + 0.4 * Math.abs(Math.sin(now * 10)) : 0);
   ctx.lineJoin = 'round';
   ctx.beginPath();
   path.trace(ctx);
-  ctx.lineWidth = trackW + 5;
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = trackW + 6;
+  ctx.strokeStyle = danger > 0 ? rgba(THEME.danger, 0.15 + danger * 0.6) : 'rgba(255,255,255,0.07)';
   ctx.stroke();
   ctx.lineWidth = trackW;
   ctx.strokeStyle = THEME.track;
@@ -74,124 +80,109 @@ function drawTrack(ctx: CanvasRenderingContext2D, b: Board, L: Layout, dpr: numb
   ctx.strokeStyle = THEME.trackInner;
   ctx.stroke();
 
-  // ports: coloured ring on the track where each tube connects
-  b.tubes.forEach((t, i) => {
-    const tb = L.tubes[i];
-    const hex = PALETTE[t.color].hex;
+  // port rings show what each tube is currently pulling in
+  for (let t = 0; t < s.nTubes; t++) {
+    const tb = L.tubes[t];
+    const hex = PALETTE[intake(s, t)].hex;
     ctx.beginPath();
-    ctx.ellipse(tb.cx, L.loopBottom, L.pipeW * 0.62, trackW * 0.52, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = rgba(hex, 0.65);
-    ctx.lineWidth = 2;
+    ctx.ellipse(tb.cx, L.loopBottom, L.pipeW * 0.66, trackW * 0.55, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = s.complete[t] ? 'rgba(255,255,255,0.15)' : rgba(hex, 0.9);
+    ctx.lineWidth = s.combo[t] > 0 ? 3 : 2;
     ctx.stroke();
-  });
+  }
 
-  // belt: studs on empty slots (show movement) and beads
-  const N = b.N;
-  for (let i = 0; i < N; i++) {
-    const s = b.slots[i];
-    const p = path.at(mod(i + b.offset, N) * L.spacing);
-    const j = (hash01(i) - 0.5) * trackW * 0.26;
-    const x = p.x + p.nx * j;
-    const y = p.y + p.ny * j;
-    if (!s) {
+  // belt beads (positions computed by the simulation, in wasm when available)
+  const pos = s.pos;
+  for (let i = 0; i < s.nSlots; i++) {
+    const c = s.slotColor[i];
+    const x = pos[i * 2];
+    const y = pos[i * 2 + 1];
+    if (c === EMPTY) {
       ctx.fillStyle = THEME.stud;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, L.beadR * 0.22, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(x - L.beadR * 0.2, y - L.beadR * 0.2, L.beadR * 0.4, L.beadR * 0.4);
       continue;
     }
-    const age = s.born < 0 ? 1 : clamp((b.time - s.born) / 0.18, 0, 1);
-    const r = L.beadR * (age < 1 ? Ease.outBack(age) : 1);
-    const c = PALETTE[s.color];
-    drawBead(ctx, c.hex, x, y, r, dpr, c.glyph);
+    const born = s.slotBorn[i];
+    const age = born < 0 ? 1 : clamp((s.scal[S.TIME] - born) / 0.18, 0, 1);
+    const pc = PALETTE[c];
+    drawBead(ctx, pc.hex, x, y, L.beadR * (age < 1 ? Ease.outBack(age) : 1), dpr, pc.glyph);
   }
 }
 
-function drawBlock(ctx: CanvasRenderingContext2D, tb: TubeBox, k: number, colorId: number, dpr: number, alpha = 1): void {
-  const c = PALETTE[colorId];
+function drawCellFrame(ctx: CanvasRenderingContext2D, tb: TubeBox, k: number, hex: string): void {
   const top = cellTop(tb, k);
-  const inset = tb.cell * 0.04;
-  ctx.globalAlpha = alpha;
-  roundRect(ctx, tb.x + tb.pad + inset, top + inset, tb.cell - inset * 2, tb.cell - inset * 2, tb.cell * 0.2);
-  ctx.fillStyle = shade(c.hex, -0.55);
+  const inset = tb.cell * 0.035;
+  roundRect(ctx, tb.x + tb.pad + inset, top + inset, tb.cell - inset * 2, tb.cell - inset * 2, tb.cell * 0.18);
+  ctx.fillStyle = shade(hex, -0.6);
   ctx.fill();
-  ctx.strokeStyle = shade(c.hex, -0.1);
-  ctx.lineWidth = Math.max(1, tb.cell * 0.05);
+  ctx.strokeStyle = shade(hex, -0.15);
+  ctx.lineWidth = Math.max(1, tb.cell * 0.045);
   ctx.stroke();
-  for (let s = 0; s < K; s++) {
-    const p = beadPos(tb, k, s);
-    drawBead(ctx, c.hex, p.x, p.y, tb.br, dpr, c.glyph);
-  }
-  ctx.globalAlpha = 1;
 }
 
-function looseBeadPos(t: Tube, tb: TubeBox, m: number) {
-  return beadPos(tb, t.looseY + Math.floor(m / K), m % K);
-}
-
-function drawTube(ctx: CanvasRenderingContext2D, b: Board, t: Tube, tb: TubeBox, L: Layout, dpr: number, highlight: number): void {
-  const c = PALETTE[t.color];
-  const shake = Math.sin(b.time * 55) * t.shake * tb.w * 0.09;
+function drawTube(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: TubeBox, L: Layout, dpr: number, highlight: number): void {
+  const shellC = PALETTE[s.tubeShell[t]];
+  const complete = s.complete[t] !== 0;
+  const flash = s.flash[t];
+  const shakeX = Math.sin(s.scal[S.TIME] * 55) * s.shake[t] * tb.w * 0.09;
   ctx.save();
-  ctx.translate(shake, 0);
+  ctx.translate(shakeX, 0);
   const r = tb.w * 0.26;
 
-  // glow when complete / hint highlight
-  if (t.complete || highlight > 0) {
+  if (complete || highlight > 0) {
     ctx.save();
-    ctx.shadowColor = t.complete ? c.hex : '#ffffff';
-    ctx.shadowBlur = tb.w * (t.complete ? 0.5 + t.flash * 0.6 : 0.4 * highlight);
+    ctx.shadowColor = complete ? shellC.hex : '#ffffff';
+    ctx.shadowBlur = tb.w * (complete ? 0.5 + flash * 0.6 : 0.45 * highlight);
     roundRect(ctx, tb.x, tb.y, tb.w, tb.h, r);
-    ctx.fillStyle = rgba(c.hex, 0.35);
+    ctx.fillStyle = rgba(shellC.hex, 0.35);
     ctx.fill();
     ctx.restore();
   }
 
-  // glass body
   roundRect(ctx, tb.x, tb.y, tb.w, tb.h, r);
   ctx.fillStyle = THEME.tubeInner;
   ctx.fill();
   const glass = ctx.createLinearGradient(tb.x, 0, tb.x + tb.w, 0);
-  glass.addColorStop(0, rgba(c.hex, 0.22));
-  glass.addColorStop(0.5, rgba(c.hex, 0.06));
-  glass.addColorStop(1, rgba(c.hex, 0.18));
+  glass.addColorStop(0, rgba(shellC.hex, 0.24));
+  glass.addColorStop(0.5, rgba(shellC.hex, 0.06));
+  glass.addColorStop(1, rgba(shellC.hex, 0.2));
   ctx.fillStyle = glass;
   ctx.fill();
 
-  // blocks
-  t.blocks.forEach((blk) => drawBlock(ctx, tb, blk.y, blk.color, dpr));
-  // loose sorted beads
-  for (let m = 0; m < t.sorted; m++) {
-    const p = looseBeadPos(t, tb, m);
-    drawBead(ctx, c.hex, p.x, p.y, tb.br, dpr, c.glyph);
-  }
-  // ejecting blocks rising out
-  for (const e of t.ejects) {
-    const u = Ease.inQuad(clamp(e.t / EJECT_TIME, 0, 1));
-    const y = lerp(e.fromY, t.cap + 0.3, u);
-    drawBlock(ctx, tb, y, e.color, dpr, 1 - u * 0.7);
+  // contents: full single-colour cells get a block frame, others show loose beads
+  const len = s.tubeLen[t];
+  for (let k = 0; k * K < len; k++) {
+    const n = Math.min(K, len - k * K);
+    const c0 = beadAt(s, t, k * K);
+    let solid = n === K;
+    for (let j = 1; j < n && solid; j++) if (beadAt(s, t, k * K + j) !== c0) solid = false;
+    if (solid) drawCellFrame(ctx, tb, k, PALETTE[c0].hex);
+    for (let j = 0; j < n; j++) {
+      const pc = PALETTE[beadAt(s, t, k * K + j)];
+      const p = beadPos(tb, k, j);
+      drawBead(ctx, pc.hex, p.x, p.y, tb.br, dpr, pc.glyph);
+    }
   }
 
-  // rim + highlight
   roundRect(ctx, tb.x, tb.y, tb.w, tb.h, r);
-  ctx.strokeStyle = t.complete ? shade(c.hex, 0.3) : rgba(c.hex, 0.9);
+  ctx.strokeStyle = complete ? shade(shellC.hex, 0.3) : rgba(shellC.hex, 0.9);
   ctx.lineWidth = Math.max(2, tb.w * 0.055);
   ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  roundRect(ctx, tb.x + tb.w * 0.14, tb.y + tb.w * 0.2, tb.w * 0.09, tb.h - tb.w * 0.4, tb.w * 0.05);
+  roundRect(ctx, tb.x + tb.w * 0.1, tb.y + tb.w * 0.2, tb.w * 0.07, tb.h - tb.w * 0.4, tb.w * 0.04);
   ctx.fill();
-  if (t.flash > 0) {
+  if (flash > 0) {
     roundRect(ctx, tb.x, tb.y, tb.w, tb.h, r);
-    ctx.fillStyle = `rgba(255,255,255,${t.flash * 0.45})`;
+    ctx.fillStyle = `rgba(255,255,255,${flash * 0.45})`;
     ctx.fill();
   }
 
-  // colour cap with glyph (accessibility)
+  // shell-colour cap with glyph (✓ when complete)
   const capY = tb.y + tb.h + tb.w * 0.12;
   roundRect(ctx, tb.x + tb.w * 0.06, capY, tb.w * 0.88, tb.capH, tb.capH * 0.4);
-  ctx.fillStyle = c.hex;
+  ctx.fillStyle = shellC.hex;
   ctx.fill();
-  if (t.complete) {
+  if (complete) {
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = Math.max(2, tb.capH * 0.16);
     ctx.lineCap = 'round';
@@ -201,67 +192,85 @@ function drawTube(ctx: CanvasRenderingContext2D, b: Board, t: Tube, tb: TubeBox,
     ctx.lineTo(tb.cx + tb.capH * 0.38, capY + tb.capH * 0.26);
     ctx.stroke();
   } else {
-    drawGlyph(ctx, c.glyph, tb.cx, capY + tb.capH / 2, tb.capH * 0.55, 'rgba(255,255,255,0.85)');
+    drawGlyph(ctx, shellC.glyph, tb.cx, capY + tb.capH / 2, tb.capH * 0.55, 'rgba(255,255,255,0.85)');
   }
   ctx.restore();
 
-  // queued beads waiting in the pipe (stacked from the tube mouth upward)
-  if (t.queue.length) {
-    const qr = L.pipeW * 0.34;
-    const room = Math.max(1, Math.floor((tb.y - L.loopBottom) / (qr * 1.7)));
-    const n = Math.min(t.queue.length, room);
-    for (let q = 0; q < n; q++) {
-      const qc = PALETTE[t.queue[q]];
-      drawBead(ctx, qc.hex, tb.cx, L.loopBottom + L.trackW * 0.3 + qr + q * qr * 1.7, qr, dpr, qc.glyph);
+  // queue (ejected beads waiting to get on the belt), stacked up the pipe
+  const ql = s.qLen[t];
+  if (ql > 0) {
+    const qr = L.pipeW * 0.3;
+    const room = Math.max(1, Math.floor((tb.y - L.loopBottom - L.trackW * 0.3) / (qr * 1.6)));
+    const show = Math.min(ql, room);
+    for (let q = 0; q < show; q++) {
+      const pc = PALETTE[queueAt(s, t, q)];
+      drawBead(ctx, pc.hex, tb.cx, L.loopBottom + L.trackW * 0.35 + qr + q * qr * 1.6, qr, dpr, pc.glyph);
     }
   }
 }
 
-/** Beads falling from the port into a tube (drawn above everything). */
-function drawFalling(ctx: CanvasRenderingContext2D, t: Tube, tb: TubeBox, L: Layout, dpr: number): void {
-  const c = PALETTE[t.color];
-  t.falling.forEach((f, k) => {
-    const u = clamp(f.t / FALL_TIME, 0, 1);
-    const end = looseBeadPos(t, tb, t.sorted + k);
+function drawFalling(ctx: CanvasRenderingContext2D, s: SimState, t: number, tb: TubeBox, L: Layout, dpr: number): void {
+  const fl = s.fallLen[t];
+  if (!fl) return;
+  const pc = PALETTE[intake(s, t)];
+  const len = s.tubeLen[t];
+  for (let k = 0; k < fl; k++) {
+    const u = clamp(s.fallT[t * MAX_BEADS + k] / FALL_TIME, 0, 1);
+    const idx = len + k;
+    const end = beadPos(tb, Math.floor(idx / K), idx % K);
     const x = lerp(tb.cx, end.x, Ease.outQuad(u));
     const y = lerp(L.loopBottom, end.y, u * u);
-    drawBead(ctx, c.hex, x, y, lerp(L.beadR, tb.br, u), dpr, c.glyph);
-  });
+    drawBead(ctx, pc.hex, x, y, lerp(L.beadR, tb.br, u), dpr, pc.glyph);
+  }
 }
 
-export function drawBoard(ctx: CanvasRenderingContext2D, b: Board, L: Layout, dpr: number, hintTube: number): void {
-  // backing panel
-  roundRect(ctx, L.colX + L.colW * 0.025, L.path.y - L.trackW * 1.2, L.colW * 0.95,
-    L.tubes[0].y + L.tubes[0].h + L.tubes[0].capH + L.tubes[0].w * 0.4 - (L.path.y - L.trackW * 1.2), L.colW * 0.07);
+export function drawBoard(ctx: CanvasRenderingContext2D, s: SimState, L: Layout, dpr: number, hintTube: number): void {
+  const t0 = L.tubes[0];
+  const top = L.path.y - L.trackW * 1.2;
+  roundRect(ctx, L.colX + L.colW * 0.025, top, L.colW * 0.95, t0.y + t0.h + t0.capH + t0.w * 0.4 - top, L.colW * 0.07);
   ctx.fillStyle = THEME.panel;
   ctx.fill();
 
-  b.tubes.forEach((t, i) => drawPipe(ctx, L, L.tubes[i], PALETTE[t.color].hex));
-  drawTrack(ctx, b, L, dpr);
-  const pulse = 0.5 + 0.5 * Math.sin(b.time * 6);
-  b.tubes.forEach((t, i) => drawTube(ctx, b, t, L.tubes[i], L, dpr, i === hintTube ? pulse : 0));
-  b.tubes.forEach((t, i) => drawFalling(ctx, t, L.tubes[i], L, dpr));
+  const now = s.scal[S.TIME];
+  for (let t = 0; t < s.nTubes; t++) {
+    drawPipe(ctx, L, L.tubes[t], PALETTE[intake(s, t)].hex, s.combo[t] > 0);
+  }
+  drawTrack(ctx, s, L, dpr, now);
+  const pulse = 0.5 + 0.5 * Math.sin(now * 6);
+  for (let t = 0; t < s.nTubes; t++) drawTube(ctx, s, t, L.tubes[t], L, dpr, t === hintTube ? pulse : 0);
+  for (let t = 0; t < s.nTubes; t++) drawFalling(ctx, s, t, L.tubes[t], L, dpr);
 }
 
-/** Level number, timer and progress inside the loop. */
-export function drawLoopInfo(ctx: CanvasRenderingContext2D, b: Board, L: Layout, hint: string | null): void {
+/** Level, timer, belt-fill meter and hints inside the loop. */
+export function drawLoopInfo(ctx: CanvasRenderingContext2D, s: SimState, level: number, par: number, L: Layout, hint: string[] | null): void {
   const { x, y, w, h } = L.inner;
   const cx = x + w / 2;
-  const s = Math.min(w, h * 1.6);
-  text(ctx, `LEVEL ${b.level.number}`, cx, y + h * 0.24, s * 0.075, THEME.textDim, { weight: 800 });
-  const secs = b.elapsed;
-  const timeStr = `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, '0')}`;
-  text(ctx, timeStr, cx, y + h * 0.48, s * 0.15, THEME.text, { weight: 800, shadow: 'rgba(0,0,0,0.35)' });
-  const done = b.tubes.filter((t) => t.complete).length;
-  const dot = s * 0.022;
-  const gap = dot * 3.4;
-  const x0 = cx - ((b.tubes.length - 1) * gap) / 2;
-  b.tubes.forEach((t, i) => {
-    ctx.beginPath();
-    ctx.arc(x0 + i * gap, y + h * 0.7, dot, 0, Math.PI * 2);
-    ctx.fillStyle = t.complete ? PALETTE[t.color].hex : 'rgba(255,255,255,0.15)';
-    ctx.fill();
-  });
-  if (hint) text(ctx, hint, cx, y + h * 0.86, s * 0.052, THEME.textDim, { weight: 600 });
-  else text(ctx, `${done}/${b.tubes.length} sorted · par ${b.level.par}s`, cx, y + h * 0.86, s * 0.05, 'rgba(255,255,255,0.4)', { weight: 600 });
+  const sz = Math.min(w, h * 1.6);
+  text(ctx, `LEVEL ${level}`, cx, y + h * 0.17, sz * 0.065, THEME.textDim, { weight: 800 });
+  const secs = s.scal[S.ELAPSED];
+  text(ctx, `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, '0')}`, cx, y + h * 0.37, sz * 0.13, THEME.text, { weight: 800, shadow: 'rgba(0,0,0,0.35)' });
+
+  // belt capacity meter
+  const fill = beltFill(s);
+  const jam = s.scal[S.JAM];
+  const bw = w * 0.56;
+  const bh = Math.max(6, sz * 0.026);
+  const bx = cx - bw / 2;
+  const by = y + h * 0.56;
+  roundRect(ctx, bx, by, bw, bh, bh / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fill();
+  roundRect(ctx, bx, by, Math.max(bh, bw * fill), bh, bh / 2);
+  ctx.fillStyle = fill > 0.85 ? THEME.danger : fill > 0.65 ? '#ffc93a' : THEME.good;
+  ctx.fill();
+  const label = jam > 0 ? `JAMMED! ${Math.max(0, JAM_TIME - jam).toFixed(1)}s` : `Loop ${Math.round(fill * 100)}% full`;
+  text(ctx, label, cx, by + bh + sz * 0.045, sz * 0.042, jam > 0 ? THEME.danger : THEME.textDim, { weight: 700 });
+
+  if (hint) {
+    hint.forEach((line, i) => text(ctx, line, cx, y + h * (0.8 + i * 0.1), sz * 0.042, '#fff', { weight: 600 }));
+  } else {
+    let done = 0;
+    for (let t = 0; t < s.nTubes; t++) done += s.complete[t];
+    text(ctx, `${done}/${s.nTubes} sorted · par ${par}s`, cx, y + h * 0.84, sz * 0.042, 'rgba(255,255,255,0.4)', { weight: 600 });
+  }
 }

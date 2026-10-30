@@ -1,0 +1,11 @@
+[package]
+name = "bead-loop-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WebAssembly C-ABI exports for Bead Loop"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bead-loop = { path = "../bead-loop" }

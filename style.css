@@ -1,0 +1,281 @@
+/* ==========================================================================
+   Zen ASMR Lab - Modern Clean Visual Styles
+   Responsive for YouTube Playables (9:16 Mobile, 1:1 Square, 16:9 Desktop)
+   ========================================================================== */
+
+:root {
+  --bg-gradient: linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 50%, #F1F5F9 100%);
+  --panel-bg: rgba(255, 255, 255, 0.88);
+  --panel-border: rgba(255, 255, 255, 0.6);
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --accent-color: #6366F1;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --success-color: #10B981;
+  --tingle-grad: linear-gradient(90deg, #EC4899, #8B5CF6, #3B82F6);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.12);
+  --radius-pill: 9999px;
+  --radius-card: 22px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg-gradient);
+  color: var(--text-main);
+  touch-action: none;
+}
+
+/* Main Application Shell */
+#game-app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  max-width: 620px; /* Constrains desktop layout to optimal phone/tablet aspect ratio */
+  margin: 0 auto;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.06);
+  background: #FAF5F0;
+}
+
+/* Header Area */
+#game-header {
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.65);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.progress-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rank-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4F46E5;
+  background: #EEF2FF;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+}
+
+.tingle-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--tingle-grad);
+  border-radius: var(--radius-pill);
+  transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: #FFFFFF;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+.icon-btn.muted {
+  opacity: 0.65;
+  background: #F1F5F9;
+}
+
+.icon-btn.active {
+  background: #E0E7FF;
+  border-color: #A5B4FC;
+}
+
+/* Canvas Viewport */
+#canvas-container {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+#game-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Footer & Controls */
+#game-footer {
+  padding: 10px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.8);
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.station-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #FFFFFF;
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.96);
+}
+
+.action-btn.secondary {
+  flex: 0 0 95px;
+  background: #F8FAFC;
+  color: var(--text-muted);
+}
+
+/* Station Navigation Tabs */
+#station-nav {
+  display: flex;
+  background: rgba(241, 245, 249, 0.9);
+  padding: 5px;
+  border-radius: 16px;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.station-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.station-tab .tab-icon {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.station-tab .tab-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.station-tab.active {
+  background: #FFFFFF;
+  box-shadow: var(--shadow-sm);
+}
+
+.station-tab.active .tab-label {
+  color: var(--accent-color);
+  font-weight: 700;
+}
+
+.station-tab:active {
+  transform: scale(0.94);
+}
+
+/* Responsive tweaks for smaller screens / shorts vertical */
+@media (max-height: 640px) {
+  #game-header {
+    padding: 8px 12px;
+  }
+  #game-footer {
+    padding: 6px 10px 10px;
+    gap: 6px;
+  }
+  .station-tab {
+    padding: 5px 2px;
+  }
+  .station-tab .tab-icon {
+    font-size: 17px;
+  }
+  .station-tab .tab-label {
+    font-size: 9px;
+  }
+  .action-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}

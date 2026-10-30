@@ -9,6 +9,9 @@
  *   npm run preview   -- <game>        build + serve dist/<game>
  *   npm run zip       -- <game>        build + validate + releases/<game>-<version>.zip
  *   npm run new-game  -- <id> ["Title"] scaffold games/<id> from games/_template
+ *   npm run wasm      -- <game>        cargo build the game's Rust crate → .wasm (see game.json "wasm")
+ *   npm run levels    -- <game>        run game.json scripts.levels   (e.g. Rust level generator)
+ *   npm run parity    -- <game>        run game.json scripts.parity   (Rust ↔ TS check)
  *
  * If <game> is omitted and only one game exists, that game is used.
  */
@@ -16,6 +19,7 @@ import {
   readdirSync, existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, statSync,
 } from 'node:fs';
 import { resolve, join, relative, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(import.meta.url), '..', '..');
@@ -66,7 +70,43 @@ async function vite() {
   return import('vite');
 }
 
+/**
+ * Builds the game's Rust crate to wasm32-unknown-unknown and copies the .wasm
+ * into the game's source tree. game.json: { "wasm": { "crate": "x-wasm", "out": "src/wasm/x.wasm" } }
+ * Returns false (with a warning) if cargo or the wasm target is unavailable.
+ */
+function buildWasm(game, { required = false } = {}) {
+  const cfg = readMeta(game).wasm;
+  if (!cfg) return true;
+  const rustDir = join(root, 'rust');
+  console.log(`\n▶ Building Rust crate ${cfg.crate} → wasm`);
+  const r = spawnSync('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', '-p', cfg.crate], {
+    cwd: rustDir, stdio: 'inherit', shell: process.platform === 'win32',
+  });
+  if (r.status !== 0) {
+    const msg = 'Rust → wasm build failed. Install Rust (https://rustup.rs) and run: rustup target add wasm32-unknown-unknown';
+    if (required) die(msg);
+    console.warn(`  ⚠ ${msg}\n  ⚠ Continuing with the existing .wasm (or the TypeScript fallback if none).`);
+    return false;
+  }
+  const built = join(rustDir, 'target', 'wasm32-unknown-unknown', 'release', `${cfg.crate.replaceAll('-', '_')}.wasm`);
+  const out = join(gamesDir, game, cfg.out);
+  mkdirSync(resolve(out, '..'), { recursive: true });
+  cpSync(built, out);
+  console.log(`  ✔ ${relative(root, out)} (${fmt(statSync(out).size)})`);
+  return true;
+}
+
+function runTask(task, game) {
+  const cmdLine = readMeta(game).scripts?.[task];
+  if (!cmdLine) die(`games/${game}/game.json has no scripts.${task}`);
+  console.log(`▶ ${cmdLine}`);
+  const r = spawnSync(cmdLine, { cwd: root, stdio: 'inherit', shell: true });
+  if (r.status !== 0) process.exit(r.status ?? 1);
+}
+
 async function buildGame(game) {
+  if (process.env.SKIP_WASM !== '1') buildWasm(game);
   process.env.GAME = game;
   const { build } = await vite();
   console.log(`\n▶ Building ${game}`);
@@ -179,6 +219,12 @@ switch (cmd) {
   case 'new':
     scaffold(args[0], args[1]);
     break;
+  case 'wasm':
+    buildWasm(pickGame(args[0]), { required: true });
+    break;
+  case 'task':
+    runTask(args[0], pickGame(args[1]));
+    break;
   default:
-    die('Commands: list | dev | build | build-all | preview | zip | new');
+    die('Commands: list | dev | build | build-all | preview | zip | new | wasm | task <name>');
 }

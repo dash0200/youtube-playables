@@ -12,7 +12,11 @@
     "zip": "node scripts/game.mjs zip",
     "new-game": "node scripts/game.mjs new",
     "list": "node scripts/game.mjs list",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "wasm": "node scripts/game.mjs wasm",
+    "levels": "node scripts/game.mjs task levels",
+    "parity": "node scripts/game.mjs task parity",
+    "test:rust": "cargo test --manifest-path rust/Cargo.toml"
   },
   "devDependencies": {
     "fflate": "^0.8.3",

@@ -1,6 +1,7 @@
 import type { Core } from '@shared/boot';
 import type { SaveStore } from '@shared/save/save-store';
 import type { Icons } from '@shared/ui/icons';
+import type { Sim } from './sim';
 
 export interface SaveData {
   /** Highest level the player may start (1-based). */
@@ -19,6 +20,8 @@ export const defaultSave = (): SaveData => ({ unlocked: 1, stars: [], times: [],
 export interface App extends Core {
   save: SaveStore<SaveData>;
   icons: Icons;
+  /** Game simulation: Rust/WebAssembly, or the TypeScript fallback. */
+  sim: Sim;
   goMenu(): void;
   goLevels(): void;
   play(level: number): void;

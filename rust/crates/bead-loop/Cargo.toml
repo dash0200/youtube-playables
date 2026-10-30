@@ -1,0 +1,8 @@
+[package]
+name = "bead-loop"
+version = "0.1.0"
+edition = "2021"
+description = "Bead Loop game rules (no_std, no alloc)"
+
+[dependencies]
+playables-core = { path = "../playables-core" }

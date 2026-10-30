@@ -23,7 +23,12 @@ shared/
 games/
   _template/           copied by `npm run new-game`
   <game-id>/           index.html, game.json, GAME.md, public/, src/
-scripts/game.mjs       CLI: dev | build | build-all | preview | zip | new | list
+rust/                  Cargo workspace (see "Rust / WebAssembly" below)
+  crates/playables-core   shared no_std helpers (rng, math, paths) for every game
+  crates/<game>           no_std game rules, natively testable
+  crates/<game>-wasm      C-ABI exports → wasm32-unknown-unknown
+  crates/<game>-tools     native tools (level generators, parity traces)
+scripts/game.mjs       CLI: dev | build | build-all | preview | zip | new | list | wasm | task
 vite.config.ts         single config; GAME env selects games/<id>
 dist/<id>/             build output (git-ignored)
 releases/<id>-<ver>.zip  upload-ready bundles (git-ignored)
@@ -39,7 +44,25 @@ npm run build:all
 npm run zip -- <game-id>          # build + validate Playables limits + zip
 npm run new-game -- <id> "Title"  # scaffold from games/_template
 npm run typecheck                 # must pass before committing
+npm run wasm -- <game-id>         # cargo build the game's -wasm crate (game.json "wasm")
+npm run levels -- <game-id>       # game.json scripts.levels (e.g. Rust level generator)
+npm run parity -- <game-id>       # game.json scripts.parity (Rust ↔ TS check)
+npm run test:rust                 # cargo test for the whole workspace
 ```
+
+## Rust / WebAssembly
+- Hot game logic (simulation, per-frame geometry) lives in Rust: `no_std`, **no
+  allocator**, fixed-size struct-of-arrays state, exported with `#[no_mangle] extern "C"`.
+  JS reads state through zero-copy typed-array views (memory never grows).
+- Heavy offline work (level generation + solver verification) runs as native Rust tools.
+- Each game keeps a TypeScript mirror of its sim as a fallback, kept identical by a
+  checksum parity test. Rule changes go into BOTH and must pass `npm run parity`.
+- `npm run build`/`zip` try to build wasm first. Without Rust installed they warn and
+  use the committed `.wasm` (or the TS fallback). **Commit the built .wasm.**
+- Setup: install Rust from https://rustup.rs, then `rustup target add wasm32-unknown-unknown`.
+- Shared loader: `shared/src/wasm/load.ts` (`instantiateWasm`). Import wasm with
+  `import.meta.glob('./wasm/*.wasm', { query: '?url', import: 'default', eager: true })`
+  so the bundle still builds before the first wasm build.
 
 ## Conventions
 - Import shared code with `@shared/...`, shared files with `@shared-assets/...`.

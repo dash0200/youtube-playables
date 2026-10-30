@@ -10,6 +10,7 @@ import { drawBackground } from './game/render';
 import { MenuScene } from './scenes/menu';
 import { LevelSelectScene } from './scenes/levels';
 import { PlayScene } from './scenes/play';
+import { createSim, type Sim } from './sim';
 
 const save = new SaveStore<SaveData>(defaultSave, 1);
 let app: App;
@@ -42,8 +43,10 @@ void bootPlayable({
   },
 
   async load(core) {
-    const [icons] = await Promise.all([loadIcons(), save.load()]);
-    app = createApp(core, icons);
+    const [icons, , sim] = await Promise.all([loadIcons(), save.load(), createSim()]);
+    app = createApp(core, icons, sim);
+    // Test hook for automated play-testing; only with ?debug in the URL.
+    if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __beadLoop: App }).__beadLoop = app;
     // Keep YouTube's best score in sync with the save (certification rule).
     const cleared = save.data.unlocked - 1;
     if (cleared > save.data.scoreSent) {
@@ -60,11 +63,12 @@ void bootPlayable({
   },
 });
 
-function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[0], icons: Icons): App {
+function createApp(core: Parameters<Parameters<typeof bootPlayable>[0]['load']>[0], icons: Icons, sim: Sim): App {
   const a: App = {
     ...core,
     save,
     icons,
+    sim,
     goMenu: () => core.scenes.go(new MenuScene(a)),
     goLevels: () => core.scenes.go(new LevelSelectScene(a)),
     play: (n) => core.scenes.go(new PlayScene(a, Math.max(1, Math.min(MAX_LEVEL, n)))),

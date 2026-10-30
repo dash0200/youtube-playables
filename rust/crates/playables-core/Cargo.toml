@@ -1,0 +1,8 @@
+[package]
+name = "playables-core"
+version = "0.1.0"
+edition = "2021"
+description = "no_std helpers shared by all Playables games"
+
+[dependencies]
+libm = "0.2"
